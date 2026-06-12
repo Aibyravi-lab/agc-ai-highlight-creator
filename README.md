@@ -42,7 +42,33 @@ Enable gamers and streamers to automatically generate YouTube Shorts, Instagram 
 ---
 
 ## Current Status
+## Current Features
 
+### AGC-002 Full Stack Foundation ✅
+
+- Next.js Frontend
+- FastAPI Backend
+- Frontend to Backend API communication
+- Swagger API Documentation
+
+### AGC-003 Video Upload Engine ✅
+
+Features:
+- Video upload API using FastAPI
+- Multipart form data support
+- Local video storage system
+- Upload testing through Swagger UI
+- Successful gameplay video upload verification
+
+Current Workflow:
+
+User Video
+     ↓
+Upload API
+     ↓
+AGC Backend
+     ↓
+Local Storage
 
 ### AGC-002 Completed ✅
 

@@ -1,0 +1,17 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Python virtual environment
+venv/
+
+# Uploaded videos
+backend/uploads/
+
+# Next.js
+frontend/.next/
+frontend/node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
