@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers.upload import router as upload_router
+from app.routers.analysis import router as analysis_router
 
 
 app = FastAPI(
@@ -19,6 +20,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(upload_router)
+app.include_router(analysis_router)
 
 @app.get("/")
 def home():
