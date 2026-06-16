@@ -117,7 +117,26 @@ Planned Features:
 - Timestamp generation
 - Highlight detection research
 ---
+## ✅ AI Highlight Detection Foundation (AGC-005)
 
+Frame Extraction Engine:
+
+- Extract gameplay frames using FFmpeg
+- Extract 1 frame per second (1 FPS)
+- Automatic frame storage management
+- Timestamp mapping for each extracted frame
+- FastAPI frame extraction API
+
+API Endpoint:
+
+POST /frames/extract
+
+
+Test Status:
+
+✅ Swagger API tested  
+✅ Real gameplay video tested  
+✅ Frame images successfully generated
 ---
 
 ## Architecture
@@ -125,16 +144,26 @@ Planned Features:
 
 Frontend (Next.js)
         |
-REST API Calls
+        ↓
+REST API
         |
-Backend (FastAPI)
+        ↓
+FastAPI Backend
         |
-Video Upload Module
+        ↓
+Upload Engine
         |
-Video Processing Engine
+        ↓
+Video Metadata Analysis
         |
-AI Highlight Detection Engine (Upcoming)
-
+        ↓
+Frame Extraction Engine
+        |
+        ↓
+Frames + Timestamps
+        |
+        ↓
+Future AI Highlight Detection
 
 ---
 

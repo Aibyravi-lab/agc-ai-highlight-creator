@@ -53,22 +53,50 @@ Completed:
 - Real video testing completed
 - Clean metadata JSON response
 
+## AGC-005 — AI Highlight Detection Foundation
 
+Status:
+✅ COMPLETED
+
+Release:
+🚀 AGC v0.0.5 Stable
+
+
+Completed Features:
+
+### Frame Extraction Engine
+- FFmpeg-based frame extraction
+- 1 frame per second (1 FPS) extraction
+- Automatic frame storage folders
+- Unique timestamp-based storage
+
+### Backend API
+- FrameService implementation
+- Frame extraction router
+- POST /frames/extract API
+
+### Testing
+- Swagger API testing completed
+- Real gameplay video tested
+- Frame image generation verified
+
+
+Achievement:
+
+AGC moved from:
+
+Video Understanding
+
+to:
+
+Video Moment Understanding
+
+through frame-level analysis.
 ---
 
 
 ## Upcoming
 
-
-### AGC-005
-
-AI Highlight Detection Foundation
-
-Planned Features:
-- Video frame extraction
-- Scene analysis
-- Timestamp generation
-- Highlight scoring
 
 
 ### AGC-006
