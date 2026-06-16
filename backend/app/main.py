@@ -5,6 +5,7 @@ from app.routers.analysis import router as analysis_router
 from app.routers.frame import router as frame_router
 from app.routers.vision import router as vision_router
 from app.routers.highlight import router as highlight_router
+from app.routers.pipeline import router as pipeline_router
 
 
 app = FastAPI(
@@ -27,6 +28,7 @@ app.include_router(analysis_router)
 app.include_router(frame_router)
 app.include_router(vision_router)
 app.include_router(highlight_router)
+app.include_router(pipeline_router)
 @app.get("/")
 def home():
     return {
