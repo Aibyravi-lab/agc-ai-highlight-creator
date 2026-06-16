@@ -11,9 +11,9 @@ router = APIRouter(
 
 @router.post("/")
 async def upload_video(file: UploadFile = File(...)):
-
+    os.makedirs("storage/uploads", exist_ok=True)
     # Create file path
-    file_path = f"uploads/{file.filename}"
+    file_path = f"storage/uploads/{file.filename}"
 
     # Save uploaded file
     with open(file_path, "wb") as buffer:
