@@ -4,12 +4,47 @@ import { useState } from "react";
 
 export default function Home() {
   const [videoPath, setVideoPath] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  const uploadVideo = async () => {
+    if (!selectedFile) {
+      alert("Please select a video");
+      return;
+    }
+
+    setUploading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+
+      const response = await fetch(
+        "http://localhost:8000/upload/",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      const data = await response.json();
+
+      setVideoPath(data.location);
+
+      alert("Video uploaded successfully 🎮");
+    } catch (error) {
+      console.error(error);
+      alert("Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const processVideo = async () => {
     if (!videoPath) {
-      alert("Enter video path");
+      alert("Upload video first");
       return;
     }
 
@@ -44,18 +79,50 @@ export default function Home() {
       </p>
 
       <div className="mt-10 w-full max-w-2xl">
+
+        <label className="block mb-2 text-lg font-semibold">
+          Choose Video
+        </label>
+
+        <input
+          type="file"
+          accept="video/*"
+          onChange={(e) => {
+            if (e.target.files && e.target.files.length > 0) {
+              setSelectedFile(e.target.files[0]);
+            }
+          }}
+          className="w-full p-3 rounded-lg border-2 border-gray-500 bg-gray-900 text-white"
+        />
+
+        {selectedFile && (
+          <>
+            <p className="mt-2 text-green-400">
+              Selected: {selectedFile.name}
+            </p>
+
+            <button
+              onClick={uploadVideo}
+              disabled={uploading}
+              className="mt-3 w-full bg-green-600 hover:bg-green-700 text-white p-3 rounded-lg font-semibold disabled:opacity-50"
+            >
+              {uploading ? "Uploading Video..." : "Upload Video"}
+            </button>
+          </>
+        )}
+
         <input
           type="text"
-          placeholder="storage/uploads/0616(1).mp4"
+          placeholder="Uploaded video path will appear here"
           value={videoPath}
           onChange={(e) => setVideoPath(e.target.value)}
-          className="w-full p-4 rounded-lg border-2 border-gray-500 bg-gray-900 text-white placeholder-gray-400"
+          className="mt-6 w-full p-4 rounded-lg border-2 border-gray-500 bg-gray-900 text-white placeholder-gray-400"
         />
 
         <button
           onClick={processVideo}
           disabled={loading}
-          className="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-lg font-semibold"
+          className="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-lg font-semibold disabled:opacity-50"
         >
           {loading ? "Processing..." : "Process Video"}
         </button>
