@@ -52,5 +52,5 @@ class HighlightService:
             "description": description,
             "score": score,
             "keywords_found": matched_keywords,
-            "is_highlight": score >= 7
+            "is_highlight": score >= 5
         }
