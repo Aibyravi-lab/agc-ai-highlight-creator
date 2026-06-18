@@ -12,9 +12,13 @@ router = APIRouter(
 def process_video(video_path: str):
 
     try:
+
         result = PipelineService.process_video(
             video_path
         )
+
+        print("\nDEBUG RESULT:")
+        print(result)
 
         return {
             "success": True,
@@ -22,6 +26,11 @@ def process_video(video_path: str):
         }
 
     except Exception as error:
+
+        print("\nERROR:")
+        print(type(error))
+        print(error)
+
         raise HTTPException(
             status_code=500,
             detail=str(error)

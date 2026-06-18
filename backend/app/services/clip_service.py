@@ -5,7 +5,6 @@ import torch
 
 class ClipService:
 
-    # Load model once
     model = CLIPModel.from_pretrained(
         "openai/clip-vit-base-patch32"
     )
@@ -14,30 +13,73 @@ class ClipService:
         "openai/clip-vit-base-patch32"
     )
 
-
     @classmethod
     def analyze_frame(cls, image_path: str):
 
-        image = Image.open(image_path)
+        image = Image.open(
+            image_path
+        ).convert("RGB")
 
         prompts = [
 
-            # GTA driving
-            "a high speed car chase",
-            "a car drifting on a road",
-            "a car crash accident",
-            "a vehicle driving fast",
-            "a car jump stunt",
+            # Driving
+            "a GTA car driving on a city road",
+            "a sports car driving fast",
+            "a vehicle speeding through traffic",
+            "a car driving in a city",
 
-            # GTA action
-            "a person shooting a gun",
+            # Racing
+            "a street racing scene",
+            "a racing car competition",
+            "a high speed race",
+
+            # Drifting
+            "a car drifting around a corner",
+            "a vehicle performing a drift",
+
+            # Police Chase
             "a police chase in a city",
-            "an explosion in a game",
-            "an action scene from GTA",
+            "a wanted level pursuit",
+            "a police vehicle chasing a suspect",
 
-            # Neutral
-            "a person walking",
-            "a character standing",
+            # Shootout
+            "a GTA shootout scene",
+            "a player firing a weapon",
+            "a gunfight in a city",
+            "a combat firefight",
+
+            # Explosions
+            "a massive explosion",
+            "a vehicle explosion",
+            "a building explosion",
+
+            # Crashes
+            "a vehicle crash",
+            "a car collision",
+            "a damaged vehicle accident",
+
+            # Stunts
+            "a vehicle stunt jump",
+            "a car jumping through the air",
+            "a dangerous stunt scene",
+
+            # Missions
+            "a GTA mission scene",
+            "a mission objective",
+            "a heist mission",
+            "a robbery mission",
+
+            # Victory
+            "a mission completed screen",
+            "a successful mission ending",
+            "a victory scene",
+
+            # Negative
+            "a parked vehicle",
+            "a character standing still",
+            "an empty street",
+            "a garage interior",
+            "a loading screen",
             "a normal scene"
         ]
 
@@ -49,7 +91,10 @@ class ClipService:
         )
 
         with torch.no_grad():
-            outputs = cls.model(**inputs)
+
+            outputs = cls.model(
+                **inputs
+            )
 
         scores = (
             outputs.logits_per_image
@@ -58,10 +103,19 @@ class ClipService:
 
         results = []
 
-        for prompt, score in zip(prompts, scores):
+        for prompt, score in zip(
+            prompts,
+            scores
+        ):
+
             results.append({
-                "prompt": prompt,
-                "score": float(score)
+
+                "prompt":
+                prompt,
+
+                "score":
+                float(score)
+
             })
 
         results.sort(
@@ -71,32 +125,96 @@ class ClipService:
 
         return results
 
-
     @classmethod
-    def get_highlight_result(cls, image_path: str):
+    def get_highlight_result(
+        cls,
+        image_path: str
+    ):
 
-        results = cls.analyze_frame(image_path)
+        results = cls.analyze_frame(
+            image_path
+        )
 
-        best_result = results[0]
+        top_results = results[:3]
 
-        highlight_keywords = [
+        best_result = top_results[0]
+
+        positive_keywords = [
+
+            "driving",
+            "race",
+            "racing",
+            "drift",
             "chase",
-            "drifting",
-            "crash",
-            "fast",
-            "jump",
-            "shooting",
+            "pursuit",
+
+            "shootout",
+            "gunfight",
+            "combat",
+            "weapon",
+
             "explosion",
-            "action"
+
+            "crash",
+            "collision",
+
+            "stunt",
+            "jump",
+
+            "mission",
+            "heist",
+            "robbery",
+
+            "victory",
+            "completed",
+            "ending"
         ]
 
-        is_highlight = any(
-            word in best_result["prompt"]
-            for word in highlight_keywords
+        negative_keywords = [
+
+            "parked",
+            "standing",
+            "empty",
+            "garage",
+            "loading",
+            "normal"
+        ]
+
+        is_positive = any(
+
+            keyword in best_result["prompt"]
+
+            for keyword in positive_keywords
+
+        )
+
+        is_negative = any(
+
+            keyword in best_result["prompt"]
+
+            for keyword in negative_keywords
+
+        )
+
+        is_highlight = (
+
+            is_positive
+            and not is_negative
+
         )
 
         return {
-            "best_match": best_result["prompt"],
-            "score": best_result["score"],
-            "is_highlight": is_highlight
+
+            "best_match":
+            best_result["prompt"],
+
+            "score":
+            best_result["score"],
+
+            "is_highlight":
+            is_highlight,
+
+            "top_matches":
+            top_results
+
         }

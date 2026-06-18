@@ -5,6 +5,58 @@ from pathlib import Path
 class ReelService:
 
     @staticmethod
+    def create_vertical_reel(
+        input_video: str
+    ):
+
+        output_folder = Path(
+            "storage/highlights"
+        )
+
+        vertical_video = (
+            output_folder /
+            "final_highlight_reel_vertical.mp4"
+        )
+
+        command = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            input_video,
+
+            "-vf",
+            (
+                "crop="
+                "ih*9/16:ih,"
+                "scale=1080:1920"
+            ),
+
+            "-c:a",
+            "copy",
+
+            str(vertical_video)
+        ]
+
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode != 0:
+
+            print(result.stderr)
+
+            raise Exception(
+                f"Vertical reel failed: "
+                f"{result.stderr}"
+            )
+
+        return str(
+            vertical_video
+        )
+
+    @staticmethod
     def merge_clips(
         clip_paths: list
     ):
@@ -39,7 +91,9 @@ class ReelService:
                     .as_posix()
                 )
 
-                print(absolute_path)
+                print(
+                    absolute_path
+                )
 
                 file.write(
                     f"file '{absolute_path}'\n"
@@ -72,13 +126,27 @@ class ReelService:
 
         if result.returncode != 0:
 
-            print(result.stderr)
-
-            raise Exception(
-                f"Merge failed: {result.stderr}"
+            print(
+                result.stderr
             )
 
+            raise Exception(
+                f"Merge failed: "
+                f"{result.stderr}"
+            )
+
+        vertical_video = (
+            ReelService.create_vertical_reel(
+                str(final_video)
+            )
+        )
+
         return {
+
             "final_video":
-            str(final_video)
+            str(final_video),
+
+            "vertical_video":
+            str(vertical_video)
+
         }
