@@ -1,31 +1,43 @@
 class ScoringService:
 
-    ACTION_WEIGHTS = {
+    CATEGORY_WEIGHTS = {
 
-        "driving": 1.00,
+        "combat": 1.50,
 
-        "race": 1.10,
-        "racing": 1.10,
+        "danger": 1.40,
 
-        "chase": 1.20,
-        "pursuit": 1.20,
+        "victory": 1.30,
 
-        "shootout": 1.20,
-        "gunfight": 1.20,
-        "combat": 1.20,
+        "vehicle": 1.10,
 
-        "explosion": 1.25,
+        "action": 1.10,
 
-        "stunt": 1.30,
-        "jump": 1.30,
+        "exploration": 0.80
 
-        "crash": 1.15,
-        "collision": 1.15,
-
-        "mission completed": 0.70,
-        "victory": 0.70,
-        "ending": 0.70
     }
+
+    @classmethod
+    def apply_category_weight(
+        cls,
+        score: float,
+        category: str
+    ):
+
+        multiplier = (
+            cls.CATEGORY_WEIGHTS.get(
+                category.lower(),
+                1.0
+            )
+        )
+
+        weighted_score = (
+            score * multiplier
+        )
+
+        return round(
+            min(weighted_score, 1.0),
+            4
+        )
 
     @classmethod
     def apply_action_weight(
@@ -36,22 +48,74 @@ class ScoringService:
 
         action_lower = action.lower()
 
-        multiplier = 1.0
-
-        for keyword, weight in (
-            cls.ACTION_WEIGHTS.items()
+        if (
+            "combat" in action_lower
+            or
+            "gunfire" in action_lower
+            or
+            "battle" in action_lower
         ):
 
-            if keyword in action_lower:
+            return cls.apply_category_weight(
+                score,
+                "combat"
+            )
 
-                multiplier = weight
-                break
+        if (
+            "boss" in action_lower
+            or
+            "critical" in action_lower
+            or
+            "survival" in action_lower
+        ):
 
-        weighted_score = (
-            score * multiplier
-        )
+            return cls.apply_category_weight(
+                score,
+                "danger"
+            )
 
-        return round(
-            min(weighted_score, 1.0),
-            4
+        if (
+            "victory" in action_lower
+            or
+            "completed" in action_lower
+            or
+            "achievement" in action_lower
+        ):
+
+            return cls.apply_category_weight(
+                score,
+                "victory"
+            )
+
+        if (
+            "vehicle" in action_lower
+            or
+            "driving" in action_lower
+            or
+            "truck" in action_lower
+            or
+            "racing" in action_lower
+            or
+            "chase" in action_lower
+        ):
+
+            return cls.apply_category_weight(
+                score,
+                "vehicle"
+            )
+
+        if (
+            "exploration" in action_lower
+            or
+            "adventure" in action_lower
+        ):
+
+            return cls.apply_category_weight(
+                score,
+                "exploration"
+            )
+
+        return cls.apply_category_weight(
+            score,
+            "action"
         )

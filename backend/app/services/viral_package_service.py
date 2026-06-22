@@ -31,18 +31,13 @@ class ViralPackageService:
                 )
             )
 
-            title += "!"
+            title += " Highlights"
 
         description = (
-
             "Watch the best gaming moments including "
-
             +
-
             ", ".join(actions[:5])
-
             +
-
             ". Generated automatically by AGC."
         )
 
@@ -52,10 +47,23 @@ class ViralPackageService:
             "#shorts",
             "#reels",
             "#viral",
-            "#highlights",
-            "#gta5",
-            "#gtav"
+            "#highlights"
+
         ]
+
+        for action in actions[:3]:
+
+            tag = (
+                "#"
+                + action
+                .lower()
+                .replace(" ", "")
+                .replace("-", "")
+            )
+
+            if tag not in hashtags:
+
+                hashtags.append(tag)
 
         return {
 

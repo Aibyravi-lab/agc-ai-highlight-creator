@@ -2,6 +2,8 @@ from transformers import CLIPProcessor, CLIPModel
 from PIL import Image
 import torch
 
+from app.config.game_events import GAME_EVENTS
+
 
 class ClipService:
 
@@ -14,77 +16,47 @@ class ClipService:
     )
 
     @classmethod
-    def analyze_frame(cls, image_path: str):
+    def get_all_prompts(cls):
+
+        prompts = []
+
+        for category, category_prompts in GAME_EVENTS.items():
+
+            for prompt in category_prompts:
+
+                prompts.append(
+                    {
+                        "category": category,
+                        "prompt": prompt
+                    }
+                )
+
+        return prompts
+
+    @classmethod
+    def analyze_frame(
+        cls,
+        image_path: str
+    ):
 
         image = Image.open(
             image_path
-        ).convert("RGB")
+        ).convert(
+            "RGB"
+        )
 
-        prompts = [
+        prompt_objects = cls.get_all_prompts()
 
-            # Driving
-            "a GTA car driving on a city road",
-            "a sports car driving fast",
-            "a vehicle speeding through traffic",
-            "a car driving in a city",
+        prompt_texts = [
 
-            # Racing
-            "a street racing scene",
-            "a racing car competition",
-            "a high speed race",
+            item["prompt"]
 
-            # Drifting
-            "a car drifting around a corner",
-            "a vehicle performing a drift",
+            for item in prompt_objects
 
-            # Police Chase
-            "a police chase in a city",
-            "a wanted level pursuit",
-            "a police vehicle chasing a suspect",
-
-            # Shootout
-            "a GTA shootout scene",
-            "a player firing a weapon",
-            "a gunfight in a city",
-            "a combat firefight",
-
-            # Explosions
-            "a massive explosion",
-            "a vehicle explosion",
-            "a building explosion",
-
-            # Crashes
-            "a vehicle crash",
-            "a car collision",
-            "a damaged vehicle accident",
-
-            # Stunts
-            "a vehicle stunt jump",
-            "a car jumping through the air",
-            "a dangerous stunt scene",
-
-            # Missions
-            "a GTA mission scene",
-            "a mission objective",
-            "a heist mission",
-            "a robbery mission",
-
-            # Victory
-            "a mission completed screen",
-            "a successful mission ending",
-            "a victory scene",
-
-            # Negative
-            "a parked vehicle",
-            "a character standing still",
-            "an empty street",
-            "a garage interior",
-            "a loading screen",
-            "a normal scene"
         ]
 
         inputs = cls.processor(
-            text=prompts,
+            text=prompt_texts,
             images=image,
             return_tensors="pt",
             padding=True
@@ -103,20 +75,23 @@ class ClipService:
 
         results = []
 
-        for prompt, score in zip(
-            prompts,
+        for item, score in zip(
+            prompt_objects,
             scores
         ):
 
-            results.append({
+            results.append(
+                {
+                    "category":
+                    item["category"],
 
-                "prompt":
-                prompt,
+                    "prompt":
+                    item["prompt"],
 
-                "score":
-                float(score)
-
-            })
+                    "score":
+                    float(score)
+                }
+            )
 
         results.sort(
             key=lambda x: x["score"],
@@ -139,61 +114,30 @@ class ClipService:
 
         best_result = top_results[0]
 
-        positive_keywords = [
+        positive_categories = [
 
-            "driving",
-            "race",
-            "racing",
-            "drift",
-            "chase",
-            "pursuit",
-
-            "shootout",
-            "gunfight",
             "combat",
-            "weapon",
-
-            "explosion",
-
-            "crash",
-            "collision",
-
-            "stunt",
-            "jump",
-
-            "mission",
-            "heist",
-            "robbery",
-
+            "vehicle",
+            "action",
             "victory",
-            "completed",
-            "ending"
+            "danger"
+
         ]
 
-        negative_keywords = [
+        negative_categories = [
 
-            "parked",
-            "standing",
-            "empty",
-            "garage",
-            "loading",
-            "normal"
+            "exploration"
+
         ]
 
-        is_positive = any(
-
-            keyword in best_result["prompt"]
-
-            for keyword in positive_keywords
-
+        is_positive = (
+            best_result["category"]
+            in positive_categories
         )
 
-        is_negative = any(
-
-            keyword in best_result["prompt"]
-
-            for keyword in negative_keywords
-
+        is_negative = (
+            best_result["category"]
+            in negative_categories
         )
 
         is_highlight = (
@@ -204,6 +148,9 @@ class ClipService:
         )
 
         return {
+
+            "category":
+            best_result["category"],
 
             "best_match":
             best_result["prompt"],
