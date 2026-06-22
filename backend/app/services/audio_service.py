@@ -1,0 +1,202 @@
+import subprocess
+import wave
+from pathlib import Path
+
+import numpy as np
+
+
+class AudioService:
+
+    @staticmethod
+    def extract_audio(
+        video_path: str,
+        output_wav: str
+    ):
+
+        command = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            video_path,
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            output_wav
+        ]
+
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode != 0:
+            raise Exception(
+                f"Audio extraction failed: "
+                f"{result.stderr}"
+            )
+
+        return output_wav
+
+    @classmethod
+    def build_audio_map(
+        cls,
+        video_path: str
+    ):
+
+        try:
+
+            temp_folder = (
+                Path("storage")
+                / "audio"
+            )
+
+            temp_folder.mkdir(
+                parents=True,
+                exist_ok=True
+            )
+
+            wav_file = (
+                temp_folder
+                / "temp_audio.wav"
+            )
+
+            cls.extract_audio(
+                video_path=video_path,
+                output_wav=str(wav_file)
+            )
+
+            with wave.open(
+                str(wav_file),
+                "rb"
+            ) as audio:
+
+                frame_rate = (
+                    audio.getframerate()
+                )
+
+                total_frames = (
+                    audio.getnframes()
+                )
+
+                raw_audio = (
+                    audio.readframes(
+                        total_frames
+                    )
+                )
+
+            audio_data = np.frombuffer(
+                raw_audio,
+                dtype=np.int16
+            )
+
+            if len(audio_data) == 0:
+
+                return {
+                    "audio_map": {},
+                    "is_silent": True
+                }
+
+            max_amplitude = np.max(
+                np.abs(audio_data)
+            )
+
+            if max_amplitude == 0:
+
+                return {
+                    "audio_map": {},
+                    "is_silent": True
+                }
+
+            audio_map = {}
+
+            total_seconds = int(
+                len(audio_data)
+                / frame_rate
+            )
+
+            for second in range(
+                total_seconds
+            ):
+
+                start_index = (
+                    second
+                    * frame_rate
+                )
+
+                end_index = (
+                    start_index
+                    + frame_rate
+                )
+
+                second_data = (
+                    audio_data[
+                        start_index:end_index
+                    ]
+                )
+
+                if len(second_data) == 0:
+
+                    audio_map[
+                        second
+                    ] = 0.0
+
+                    continue
+
+                peak = np.max(
+                    np.abs(
+                        second_data
+                    )
+                )
+
+                score = (
+                    peak
+                    / max_amplitude
+                )
+
+                audio_map[
+                    second
+                ] = round(
+                    float(score),
+                    4
+                )
+
+            return {
+
+                "audio_map":
+                audio_map,
+
+                "is_silent":
+                False
+
+            }
+
+        except Exception as ex:
+
+            print(
+                f"[AUDIO ERROR] {ex}"
+            )
+
+            return {
+
+                "audio_map": {},
+
+                "is_silent": True
+
+            }
+
+    @classmethod
+    def get_audio_score(
+        cls,
+        audio_map: dict,
+        timestamp: int
+    ):
+
+        if not audio_map:
+            return 0.0
+
+        return audio_map.get(
+            timestamp,
+            0.0
+        )

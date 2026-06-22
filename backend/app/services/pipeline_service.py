@@ -11,6 +11,8 @@ from app.services.title_service import TitleService
 from app.services.viral_package_service import ViralPackageService
 from app.services.whisper_service import WhisperService
 from app.services.caption_service import CaptionService
+from app.services.scene_service import SceneService
+from app.services.audio_service import AudioService
 
 
 class PipelineService:
@@ -37,6 +39,22 @@ class PipelineService:
         )
 
         highlights = []
+
+        scene_service = SceneService()
+
+        audio_data = (
+            AudioService.build_audio_map(
+                video_path=video_path
+            )
+        )
+
+        audio_map = (
+            audio_data["audio_map"]
+        )
+
+        is_silent_video = (
+            audio_data["is_silent"]
+        )
 
         last_highlight_time = -15
 
@@ -69,6 +87,8 @@ class PipelineService:
             )
 
             motion_score = 0.0
+            scene_score = 0.0
+            audio_score = 0.0
 
             if index > 0:
 
@@ -84,16 +104,60 @@ class PipelineService:
                     )
                 )
 
-            base_score = (
+                scene_result = (
+                    scene_service.analyze_frame(
+                        current_frame_path=frame_path,
+                        previous_frame_path=previous_frame
+                    )
+                )
 
-                clip_result["score"] * 0.80
+                scene_score = (
+                    scene_result["scene_score"]
+                )
+                audio_score = (
+                    AudioService.get_audio_score(
+                        audio_map=audio_map,
+                        timestamp=frame[
+                            "timestamp_second"
+        ]
+    )
+)
 
-                +
+            if is_silent_video:
 
-                motion_score * 0.20
+                base_score = (
 
-            )
+                    clip_result["score"] * 0.65
 
+                    +
+
+                    motion_score * 0.20
+
+                    +
+
+                    scene_score * 0.15
+
+                )
+
+            else:
+
+                base_score = (
+
+                    clip_result["score"] * 0.50
+
+                    +
+
+                    motion_score * 0.20
+
+                    +
+
+                    scene_score * 0.15
+
+                    +
+
+                    audio_score * 0.15
+
+                )
             weighted_score = (
                 ScoringService.apply_action_weight(
                     score=base_score,
@@ -102,7 +166,16 @@ class PipelineService:
                     ]
                 )
             )
-
+            print(
+                "DEBUG:",
+                frame["timestamp_second"],
+                clip_result["best_match"],
+                "clip=", round(clip_result["score"], 3),
+                "motion=", round(motion_score, 3),
+                "scene=", round(scene_score, 3),
+                "audio=", round(audio_score, 3),
+                "final=", round(weighted_score, 3)
+            )
             if (
 
                 clip_result[
@@ -111,7 +184,7 @@ class PipelineService:
 
                 and
 
-                weighted_score >= 0.50
+                weighted_score >= 0.20
 
                 and (
 
@@ -128,6 +201,11 @@ class PipelineService:
                 )
 
             ):
+                print(
+                    "HIGHLIGHT FOUND:",
+                    frame["timestamp_second"],
+                    weighted_score
+                )
 
                 clip_duration = (
                     DurationService.get_duration(
@@ -187,6 +265,12 @@ class PipelineService:
 
                     "motion_score":
                     motion_score,
+
+                    "scene_score":
+                    scene_score,
+
+                    "audio_score":
+                    audio_score,
 
                     "thumbnail_score":
                     thumbnail_score,
@@ -422,7 +506,7 @@ class PipelineService:
         )
 
         print(
-            "Captioned Reel:",
+            "Captioned Reel:", 
             captioned_reel
         )
 
