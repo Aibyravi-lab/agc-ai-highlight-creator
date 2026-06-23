@@ -80,5 +80,9 @@ class FrameService:
             str(output_folder),
 
             "frames":
-            frame_data
+            frame_data,
+
+            "duration":
+            len(frames)
+
         }

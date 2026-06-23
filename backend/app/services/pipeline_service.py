@@ -1,3 +1,8 @@
+import time
+from pathlib import Path
+from app.services.stats_service import StatsService
+from app.services.result_export_service import ResultExportService
+from app.services.history_service import HistoryService
 from app.services.frame_service import FrameService
 from app.services.clip_service import ClipService
 from app.services.editor_service import EditorService
@@ -13,6 +18,7 @@ from app.services.whisper_service import WhisperService
 from app.services.caption_service import CaptionService
 from app.services.scene_service import SceneService
 from app.services.audio_service import AudioService
+from app.services.progress_service import ProgressService
 
 
 class PipelineService:
@@ -22,7 +28,15 @@ class PipelineService:
         cls,
         video_path: str
     ):
-
+        start_time = time.time()
+        ProgressService.update(
+            progress=5,
+            status="Starting Pipeline"
+        )
+        ProgressService.update(
+            progress=10,
+            status="Extracting Frames"
+        )
         print(
             "Step 1: Extracting frames..."
         )
@@ -32,7 +46,10 @@ class PipelineService:
                 video_path
             )
         )
-
+        ProgressService.update(
+            progress=35,
+            status="Detecting Highlights"
+        )
         print(
             "Step 2: Detecting highlights with "
             "CLIP + Motion..."
@@ -61,6 +78,7 @@ class PipelineService:
         frames = (
             frames_data["frames"]
         )
+        frames_analyzed = 0
 
         for index, frame in enumerate(
             frames
@@ -68,7 +86,7 @@ class PipelineService:
 
             if index % 5 != 0:
                 continue
-
+            frames_analyzed += 1
             print(
                 f"Analyzing frame "
                 f"{index + 1}/"
@@ -249,6 +267,8 @@ class PipelineService:
                     frame[
                         "timestamp_second"
                     ],
+                    "category":
+                    clip_result["category"],
 
                     "action":
                     clip_result[
@@ -388,11 +408,23 @@ class PipelineService:
                 reel_description="",
                 reel_hashtags=[]
             )
-
+        ProgressService.update(
+            progress=70,
+            status="Generating Reel"
+        )
         print(
             "Step 3: Creating final reel..."
         )
+        print("\nTOP HIGHLIGHTS:")
 
+        for item in top_highlights:
+
+            print(
+                item["timestamp"],
+                item["category"],
+                item["action"],
+                round(item["score"], 3)
+             )
         clip_paths = []
 
         for highlight in (
@@ -422,7 +454,10 @@ class PipelineService:
                 top_highlights
             )
         )
-
+        ProgressService.update(
+            progress=85,
+            status="Transcribing Audio"
+        )
         print(
             "Step 4: Transcribing audio..."
         )
@@ -440,7 +475,10 @@ class PipelineService:
                 "text"
             ][:100]
         )
-
+        ProgressService.update(
+            progress=95,
+            status="Adding Captions"
+        )
         print(
             "Step 5: Adding captions..."
         )
@@ -515,8 +553,63 @@ class PipelineService:
             caption_text
         )
 
+        processing_time = (
+            time.time() - start_time
+        )
+
+        stats = (
+            StatsService.build_stats(
+                video_duration=
+                frames_data["duration"],
+
+                frames_analyzed=
+                frames_analyzed,
+
+                highlights_found=
+                len(top_highlights),
+
+                processing_time=
+                processing_time
+            )
+        )
+
+        metadata[
+            "stats"
+        ] = stats
+
+        result_json = (
+            ResultExportService.save_result(
+                metadata
+            )
+        )
+
+        metadata[
+            "result_json"
+        ] = result_json
+
+        HistoryService.add_history(
+            video_name=
+            Path(video_path).name,
+
+            reel_path=
+            final_reel[
+                "final_video"
+            ],
+
+            highlights_count=
+            len(top_highlights)
+        )
+
+        metadata[
+            "history_saved"
+        ] = True
+        ProgressService.update(
+            progress=100,
+            status="Completed"
+        )
         print(
             "Pipeline completed!"
         )
+
 
         return metadata

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function Home() {
   const [selectedFile, setSelectedFile] =
@@ -12,98 +12,105 @@ export default function Home() {
   const [loading, setLoading] =
     useState(false);
 
-  const [status, setStatus] =
+  const [progress, setProgress] =
+  useState(0);
+
+  const [progressStatus, setProgressStatus] =
     useState("");
 
+  const [history, setHistory] =
+    useState<any[]>([]);  
   const generateHighlights = async () => {
-    if (!selectedFile) {
-      alert("Please select a video");
-      return;
-    }
 
-    setLoading(true);
-    setResult(null);
+  if (!selectedFile) {
 
-    try {
-      setStatus("📤 Uploading Video...");
+    alert(
+      "Please select a video"
+    );
 
-      const formData = new FormData();
+    return;
 
-      formData.append(
-        "file",
-        selectedFile
+  }
+
+  setLoading(true);
+
+  setResult(null);
+
+  setProgress(0);
+
+  setProgressStatus(
+    "Starting..."
+  );
+
+  try {
+
+    const formData =
+      new FormData();
+
+    formData.append(
+      "file",
+      selectedFile
+    );
+
+    const uploadResponse =
+      await fetch(
+        "http://localhost:8000/upload/",
+        {
+          method: "POST",
+          body: formData,
+        }
       );
 
-      const uploadResponse =
-        await fetch(
-          "http://localhost:8000/upload/",
-          {
-            method: "POST",
-            body: formData,
-          }
-        );
+    const uploadData =
+      await uploadResponse.json();
 
-      const uploadData =
-        await uploadResponse.json();
+    const uploadedPath =
+      uploadData.location;
 
-      const uploadedPath =
-        uploadData.location;
-
-      setStatus(
-        "🧠 Analyzing Frames..."
+    const processResponse =
+      await fetch(
+        `http://localhost:8000/pipeline/process?video_path=${encodeURIComponent(
+          uploadedPath
+        )}`,
+        {
+          method: "POST",
+        }
       );
 
-      await new Promise(
-        (resolve) =>
-          setTimeout(resolve, 1000)
-      );
+    const processData =
+      await processResponse.json();
 
-      setStatus(
-        "🎯 Detecting Highlights..."
-      );
+    setResult(
+      processData.data
+    );
 
-      await new Promise(
-        (resolve) =>
-          setTimeout(resolve, 1000)
-      );
+    await loadHistory();
 
-      setStatus(
-        "🎬 Generating Reel..."
-      );
+    setProgress(100);
 
-      const processResponse =
-        await fetch(
-          `http://localhost:8000/pipeline/process?video_path=${encodeURIComponent(
-            uploadedPath
-          )}`,
-          {
-            method: "POST",
-          }
-        );
+    setProgressStatus(
+      "Completed"
+    );
 
-      const processData =
-        await processResponse.json();
+  } catch (error) {
 
-      setResult(
-        processData.data
-      );
+    console.error(
+      error
+    );
 
-      setStatus(
-        "✅ Processing Complete"
-      );
-    } catch (error) {
-      console.error(error);
+    alert(
+      "Processing failed"
+    );
 
-      setStatus("");
+  } finally {
 
-      alert(
-        "Processing failed"
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
+    setLoading(
+      false
+    );
 
+  }
+
+};
   const getVideoUrl = () => {
     if (!result?.final_reel)
       return "";
@@ -207,8 +214,113 @@ export default function Home() {
 
     alert(message);
   };
+  const downloadResultsJson =
+  () => {
 
-  return (
+    if (
+      !result?.result_json
+    ) {
+
+      alert(
+        "Results JSON not found"
+      );
+
+      return;
+
+    }
+
+    const normalizedPath =
+      result.result_json.replaceAll(
+        "\\",
+        "/"
+      );
+
+    window.open(
+      `http://localhost:8000/${normalizedPath}`,
+      "_blank"
+    );
+
+  };
+
+const loadHistory =
+  async () => {
+
+    try {
+
+      const response =
+        await fetch(
+          "http://localhost:8000/history/"
+        );
+
+      const data =
+        await response.json();
+
+      setHistory(
+        data.data || []
+      );
+
+    } catch (error) {
+
+      console.error(
+        "History Load Failed",
+        error
+      );
+
+    }
+
+  };
+
+const loadProgress =
+  async () => {
+
+    try {
+
+      const response =
+        await fetch(
+          "http://localhost:8000/pipeline/progress"
+        );
+
+      const data =
+        await response.json();
+
+      setProgress(
+        data.data?.progress || 0
+      );
+
+      setProgressStatus(
+        data.data?.status || ""
+      );
+
+    } catch (error) {
+
+      console.error(
+        "Progress Load Failed",
+        error
+      );
+
+    }
+
+  };
+
+useEffect(() => {
+
+  loadHistory();
+
+  const interval =
+    setInterval(() => {
+
+      loadProgress();
+
+    }, 2000);
+
+  return () =>
+    clearInterval(
+      interval
+    );
+
+}, []);
+
+return (
     <main className="min-h-screen bg-black text-white flex flex-col items-center p-10">
 
       <h1 className="text-6xl font-bold">
@@ -268,24 +380,198 @@ export default function Home() {
             : "Generate Highlights"}
         </button>
 
-        {status && (
-          <div className="mt-4 p-4 rounded-lg border border-blue-500 bg-gray-900">
+        
+        {loading && (
 
-            <p className="text-center text-blue-300 font-semibold">
-              {status}
-            </p>
+          <div className="mt-4 p-4 rounded-lg border border-green-500 bg-gray-900">
+
+            <div className="flex justify-between mb-2">
+
+              <span>
+                {progressStatus}
+              </span>
+
+              <span>
+                {progress}%
+              </span>
+
+            </div>
+
+            <div className="w-full bg-gray-700 rounded-full h-4">
+
+              <div
+                className="bg-green-500 h-4 rounded-full transition-all duration-500"
+                style={{
+                  width: `${progress}%`
+                }}
+              />
+
+            </div>
 
           </div>
+
+        )}
+      </div>
+        {/* Processing History */}
+
+{history.length > 0 && (
+
+  <div className="mt-12 w-full max-w-6xl">
+
+    <h2 className="text-4xl font-bold mb-6">
+      📜 Processing History
+    </h2>
+
+    <div className="grid gap-4">
+
+      {history
+        .slice()
+        .reverse()
+        .map(
+          (
+            item: any,
+            index: number
+          ) => (
+
+            <div
+              key={index}
+              className="p-5 rounded-lg border border-gray-700 bg-gray-900"
+            >
+
+              <div className="grid md:grid-cols-4 gap-4 items-center">
+
+                <div>
+
+                  <p className="text-gray-400">
+                    Video Name
+                  </p>
+
+                  <p className="font-semibold break-all">
+                    {item.video_name}
+                  </p>
+
+                </div>
+
+                <div>
+
+                  <p className="text-gray-400">
+                    Date
+                  </p>
+
+                  <p>
+                    {item.date}
+                  </p>
+
+                </div>
+
+                <div>
+
+                  <p className="text-gray-400">
+                    Highlights
+                  </p>
+
+                  <p className="text-xl font-bold text-green-400">
+                    {item.highlights_count || 0}
+                  </p>
+
+                </div>
+
+                <div>
+
+                  {item.reel_path && (
+
+                    <button
+                      onClick={() =>
+                        window.open(
+                          `http://localhost:8000/${item.reel_path.replaceAll(
+                            "\\",
+                            "/"
+                          )}`,
+                          "_blank"
+                        )
+                      }
+                      className="w-full bg-blue-600 hover:bg-blue-700 p-3 rounded-lg font-semibold"
+                    >
+                      🎬 Open Reel
+                    </button>
+
+                  )}
+
+                </div>
+
+              </div>
+
+            </div>
+
+          )
         )}
 
-      </div>
+    </div>
 
+  </div>
+
+)}
       {result && (
         <div className="mt-12 w-full max-w-6xl">
 
           <h2 className="text-4xl font-bold mb-6">
             Results
           </h2>
+          {result.stats && (
+
+            <div className="mb-6 p-6 rounded-lg border border-yellow-500 bg-gray-900">
+
+              <h3 className="text-2xl font-bold text-yellow-400 mb-4">
+                📊 Processing Stats
+              </h3>
+
+              <div className="grid gap-4 md:grid-cols-4">
+
+                <div>
+                  <p className="text-gray-400">
+                    Video Duration
+                  </p>
+
+                  <p className="text-2xl font-bold">
+                    {result.stats.video_duration}s
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-gray-400">
+                    Frames Analyzed
+                  </p>
+
+                  <p className="text-2xl font-bold">
+                    {result.stats.frames_analyzed}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-gray-400">
+                    Highlights Found
+                  </p>
+
+                  <p className="text-2xl font-bold">
+                    {result.stats.highlights_found}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-gray-400">
+                    Processing Time
+                  </p>
+
+                  <p className="text-2xl font-bold">
+                    {result.stats.processing_time}s
+                  </p>
+                </div>
+
+              </div>
+
+            </div>
+
+          )}
 
           <div className="grid gap-4 md:grid-cols-2">
 
@@ -398,7 +684,14 @@ export default function Home() {
               >
                 📋 Copy Description
               </button>
-
+              <button
+                onClick={
+                  downloadResultsJson
+                }
+                className="mt-4 w-full bg-orange-600 hover:bg-orange-700 text-white p-3 rounded-lg font-semibold"
+              >
+                📄 Download Results JSON
+              </button>      
             </div>
 
             <div className="mt-6">
@@ -538,6 +831,17 @@ export default function Home() {
             <h3 className="text-2xl font-bold text-cyan-400">
               🖼 Best Thumbnail
             </h3>
+            <button
+              onClick={() =>
+                window.open(
+                  getThumbnailUrl(),
+                  "_blank"
+                )
+              }
+              className="mt-4 w-full bg-cyan-600 hover:bg-cyan-700 text-white p-3 rounded-lg font-semibold"
+            >
+              ⬇ Download Thumbnail
+            </button>
 
             <img
               src={getThumbnailUrl()}

@@ -1,7 +1,48 @@
 class TitleService:
 
-    @staticmethod
+    CATEGORY_TITLES = {
+
+        "combat": [
+            "Insane Combat Highlights",
+            "Crazy Battle Moments",
+            "Epic Combat Compilation"
+        ],
+
+        "danger": [
+            "Dangerous Survival Moments",
+            "Insane Near Misses",
+            "Extreme Gaming Moments"
+        ],
+
+        "victory": [
+            "Legendary Winning Moments",
+            "Epic Victory Highlights",
+            "Clutch Gaming Plays"
+        ],
+
+        "vehicle": [
+            "Epic Driving Highlights",
+            "High Speed Action Moments",
+            "Ultimate Vehicle Gameplay"
+        ],
+
+        "action": [
+            "Epic Action Highlights",
+            "Insane Gameplay Moments",
+            "Best Gaming Action"
+        ],
+
+        "exploration": [
+            "Amazing Open World Adventure",
+            "Epic Exploration Journey",
+            "Beautiful Gaming Moments"
+        ]
+
+    }
+
+    @classmethod
     def generate_title(
+        cls,
         highlights: list
     ):
 
@@ -11,40 +52,45 @@ class TitleService:
                 "AI Gaming Highlights"
             )
 
-        actions = []
+        category_count = {}
 
         for highlight in highlights:
 
-            action = (
-                highlight["action"]
-                .replace("a ", "")
-                .replace("an ", "")
-                .replace("scene", "")
-                .strip()
-            )
-
-            actions.append(
-                action.title()
-            )
-
-        unique_actions = []
-
-        for action in actions:
-
-            if action not in unique_actions:
-
-                unique_actions.append(
-                    action
+            category = (
+                highlight.get(
+                    "category",
+                    "action"
                 )
+            )
 
-        top_actions = (
-            unique_actions[:3]
+            category_count[
+                category
+            ] = (
+
+                category_count.get(
+                    category,
+                    0
+                ) + 1
+
+            )
+
+        dominant_category = max(
+
+            category_count,
+
+            key=category_count.get
+
         )
 
-        title = (
-            " + ".join(top_actions)
+        category_titles = (
+
+            cls.CATEGORY_TITLES.get(
+                dominant_category,
+                cls.CATEGORY_TITLES[
+                    "action"
+                ]
+            )
+
         )
 
-        return (
-            f"{title} Highlights"
-        )
+        return category_titles[0]

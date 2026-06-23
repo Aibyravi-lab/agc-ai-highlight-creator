@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from app.services.pipeline_service import PipelineService
+from app.services.progress_service import ProgressService
 
 
 router = APIRouter(
@@ -35,3 +36,12 @@ def process_video(video_path: str):
             status_code=500,
             detail=str(error)
         )
+
+
+@router.get("/progress")
+def get_progress():
+
+    return {
+        "success": True,
+        "data": ProgressService.get_progress()
+    }

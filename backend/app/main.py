@@ -10,6 +10,8 @@ from app.routers.highlight import router as highlight_router
 from app.routers.pipeline import router as pipeline_router
 from app.routers.clip import router as clip_router
 from app.routers.editor import router as editor_router
+from app.routers.history import (router as history_router
+)
 
 
 app = FastAPI(
@@ -36,6 +38,7 @@ app.include_router(highlight_router)
 app.include_router(pipeline_router)
 app.include_router(clip_router)
 app.include_router(editor_router)
+app.include_router(history_router)
 
 # Serve all generated assets
 app.mount(
@@ -43,7 +46,11 @@ app.mount(
     StaticFiles(directory="storage"),
     name="storage"
 )
-
+app.mount(
+    "/outputs",
+    StaticFiles(directory="outputs"),
+    name="outputs"
+)
 
 @app.get("/")
 def home():
