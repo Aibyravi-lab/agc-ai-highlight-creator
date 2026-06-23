@@ -71,6 +71,31 @@ def start_video_processing(
         )
 
 
+@router.get("/job/{job_id}")
+def get_job_status(
+    job_id: str
+):
+
+    job = JobService.get_job(
+        job_id
+    )
+
+    if not job:
+
+        raise HTTPException(
+            status_code=404,
+            detail="Job not found"
+        )
+
+    return {
+
+        "success": True,
+
+        "data": job
+
+    }
+
+
 @router.get("/progress")
 def get_progress():
 
