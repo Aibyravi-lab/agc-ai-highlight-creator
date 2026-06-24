@@ -71,6 +71,24 @@ def start_video_processing(
         )
 
 
+@router.get("/jobs")
+def get_all_jobs():
+
+    jobs = JobService.get_all_jobs()
+
+    return {
+
+        "success": True,
+
+        "count":
+        len(jobs),
+
+        "data":
+        jobs
+
+    }
+
+
 @router.get("/job/{job_id}")
 def get_job_status(
     job_id: str
@@ -92,6 +110,19 @@ def get_job_status(
         "success": True,
 
         "data": job
+
+    }
+
+
+@router.get("/jobs/stats")
+def get_job_stats():
+
+    return {
+
+        "success": True,
+
+        "data":
+        JobService.get_job_stats()
 
     }
 

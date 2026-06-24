@@ -30,7 +30,11 @@ class JobService:
             "error": None,
 
             "created_at":
-            datetime.utcnow().isoformat()
+            datetime.utcnow().isoformat(),
+
+            "started_at": None,
+
+            "completed_at": None
 
         }
 
@@ -47,6 +51,15 @@ class JobService:
         )
 
     @classmethod
+    def get_all_jobs(
+        cls
+    ):
+
+        return list(
+            cls.JOBS.values()
+        )
+
+    @classmethod
     def update_job(
         cls,
         job_id: str,
@@ -57,6 +70,14 @@ class JobService:
 
         if job_id not in cls.JOBS:
             return
+
+        if (
+            cls.JOBS[job_id]["started_at"]
+            is None
+        ):
+            cls.JOBS[job_id][
+                "started_at"
+            ] = datetime.utcnow().isoformat()
 
         cls.JOBS[job_id].update({
 
@@ -86,7 +107,10 @@ class JobService:
 
             "message": "Completed",
 
-            "result": result
+            "result": result,
+
+            "completed_at":
+            datetime.utcnow().isoformat()
 
         })
 
@@ -106,6 +130,51 @@ class JobService:
 
             "message": "Failed",
 
-            "error": error
+            "error": error,
+
+            "completed_at":
+            datetime.utcnow().isoformat()
 
         })
+
+    @classmethod
+    def get_job_stats(
+        cls
+    ):
+
+        jobs = cls.JOBS.values()
+
+        return {
+
+            "total_jobs":
+            len(cls.JOBS),
+
+            "pending_jobs":
+            sum(
+                1
+                for job in jobs
+                if job["status"] == "pending"
+            ),
+
+            "processing_jobs":
+            sum(
+                1
+                for job in jobs
+                if job["status"] == "processing"
+            ),
+
+            "completed_jobs":
+            sum(
+                1
+                for job in jobs
+                if job["status"] == "completed"
+            ),
+
+            "failed_jobs":
+            sum(
+                1
+                for job in jobs
+                if job["status"] == "failed"
+            )
+
+        }
