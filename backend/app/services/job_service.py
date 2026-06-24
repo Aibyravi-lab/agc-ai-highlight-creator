@@ -1,10 +1,14 @@
+import json
 import uuid
+
 from datetime import datetime
+
+from app.services.database_service import (
+    DatabaseService
+)
 
 
 class JobService:
-
-    JOBS = {}
 
     @classmethod
     def create_job(
@@ -15,28 +19,49 @@ class JobService:
             uuid.uuid4()
         )
 
-        cls.JOBS[job_id] = {
+        created_at = (
+            datetime.utcnow()
+            .isoformat()
+        )
 
-            "job_id": job_id,
+        connection = (
+            DatabaseService.get_connection()
+        )
 
-            "status": "pending",
+        cursor = connection.cursor()
 
-            "progress": 0,
+        cursor.execute(
+            """
+            INSERT INTO jobs (
+                job_id,
+                status,
+                progress,
+                message,
+                result,
+                error,
+                created_at,
+                started_at,
+                completed_at
+            )
+            VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            (
+                job_id,
+                "pending",
+                0,
+                "Job Created",
+                None,
+                None,
+                created_at,
+                None,
+                None
+            )
+        )
 
-            "message": "Job Created",
-
-            "result": None,
-
-            "error": None,
-
-            "created_at":
-            datetime.utcnow().isoformat(),
-
-            "started_at": None,
-
-            "completed_at": None
-
-        }
+        connection.commit()
+        connection.close()
 
         return job_id
 
@@ -46,18 +71,99 @@ class JobService:
         job_id: str
     ):
 
-        return cls.JOBS.get(
-            job_id
+        connection = (
+            DatabaseService.get_connection()
         )
+
+        connection.row_factory = (
+            lambda cursor, row: {
+                col[0]: row[idx]
+                for idx, col in enumerate(
+                    cursor.description
+                )
+            }
+        )
+
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            SELECT *
+            FROM jobs
+            WHERE job_id = ?
+            """,
+            (job_id,)
+        )
+
+        job = cursor.fetchone()
+
+        connection.close()
+
+        if (
+            job and
+            job["result"]
+        ):
+            try:
+
+                job["result"] = (
+                    json.loads(
+                        job["result"]
+                    )
+                )
+
+            except Exception:
+                pass
+
+        return job
 
     @classmethod
     def get_all_jobs(
         cls
     ):
 
-        return list(
-            cls.JOBS.values()
+        connection = (
+            DatabaseService.get_connection()
         )
+
+        connection.row_factory = (
+            lambda cursor, row: {
+                col[0]: row[idx]
+                for idx, col in enumerate(
+                    cursor.description
+                )
+            }
+        )
+
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            SELECT *
+            FROM jobs
+            ORDER BY created_at DESC
+            """
+        )
+
+        jobs = cursor.fetchall()
+
+        connection.close()
+
+        for job in jobs:
+
+            if job["result"]:
+
+                try:
+
+                    job["result"] = (
+                        json.loads(
+                            job["result"]
+                        )
+                    )
+
+                except Exception:
+                    pass
+
+        return jobs
 
     @classmethod
     def update_job(
@@ -68,26 +174,51 @@ class JobService:
         status: str = "processing"
     ):
 
-        if job_id not in cls.JOBS:
+        job = cls.get_job(
+            job_id
+        )
+
+        if not job:
             return
 
-        if (
-            cls.JOBS[job_id]["started_at"]
-            is None
-        ):
-            cls.JOBS[job_id][
-                "started_at"
-            ] = datetime.utcnow().isoformat()
+        started_at = (
+            job["started_at"]
+        )
 
-        cls.JOBS[job_id].update({
+        if started_at is None:
 
-            "status": status,
+            started_at = (
+                datetime.utcnow()
+                .isoformat()
+            )
 
-            "progress": progress,
+        connection = (
+            DatabaseService.get_connection()
+        )
 
-            "message": message
+        cursor = connection.cursor()
 
-        })
+        cursor.execute(
+            """
+            UPDATE jobs
+            SET
+                status = ?,
+                progress = ?,
+                message = ?,
+                started_at = ?
+            WHERE job_id = ?
+            """,
+            (
+                status,
+                progress,
+                message,
+                started_at,
+                job_id
+            )
+        )
+
+        connection.commit()
+        connection.close()
 
     @classmethod
     def complete_job(
@@ -96,23 +227,38 @@ class JobService:
         result: dict
     ):
 
-        if job_id not in cls.JOBS:
-            return
+        connection = (
+            DatabaseService.get_connection()
+        )
 
-        cls.JOBS[job_id].update({
+        cursor = connection.cursor()
 
-            "status": "completed",
+        cursor.execute(
+            """
+            UPDATE jobs
+            SET
+                status = ?,
+                progress = ?,
+                message = ?,
+                result = ?,
+                completed_at = ?
+            WHERE job_id = ?
+            """,
+            (
+                "completed",
+                100,
+                "Completed",
+                json.dumps(
+                    result
+                ),
+                datetime.utcnow()
+                .isoformat(),
+                job_id
+            )
+        )
 
-            "progress": 100,
-
-            "message": "Completed",
-
-            "result": result,
-
-            "completed_at":
-            datetime.utcnow().isoformat()
-
-        })
+        connection.commit()
+        connection.close()
 
     @classmethod
     def fail_job(
@@ -121,60 +267,106 @@ class JobService:
         error: str
     ):
 
-        if job_id not in cls.JOBS:
-            return
+        connection = (
+            DatabaseService.get_connection()
+        )
 
-        cls.JOBS[job_id].update({
+        cursor = connection.cursor()
 
-            "status": "failed",
+        cursor.execute(
+            """
+            UPDATE jobs
+            SET
+                status = ?,
+                message = ?,
+                error = ?,
+                completed_at = ?
+            WHERE job_id = ?
+            """,
+            (
+                "failed",
+                "Failed",
+                error,
+                datetime.utcnow()
+                .isoformat(),
+                job_id
+            )
+        )
 
-            "message": "Failed",
-
-            "error": error,
-
-            "completed_at":
-            datetime.utcnow().isoformat()
-
-        })
+        connection.commit()
+        connection.close()
 
     @classmethod
     def get_job_stats(
         cls
     ):
 
-        jobs = cls.JOBS.values()
+        connection = (
+            DatabaseService.get_connection()
+        )
+
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                COUNT(*) as total_jobs,
+
+                SUM(
+                    CASE
+                    WHEN status='pending'
+                    THEN 1
+                    ELSE 0
+                    END
+                ) as pending_jobs,
+
+                SUM(
+                    CASE
+                    WHEN status='processing'
+                    THEN 1
+                    ELSE 0
+                    END
+                ) as processing_jobs,
+
+                SUM(
+                    CASE
+                    WHEN status='completed'
+                    THEN 1
+                    ELSE 0
+                    END
+                ) as completed_jobs,
+
+                SUM(
+                    CASE
+                    WHEN status='failed'
+                    THEN 1
+                    ELSE 0
+                    END
+                ) as failed_jobs
+
+            FROM jobs
+            """
+        )
+
+        row = cursor.fetchone()
+
+        connection.close()
 
         return {
 
             "total_jobs":
-            len(cls.JOBS),
+            row[0] or 0,
 
             "pending_jobs":
-            sum(
-                1
-                for job in jobs
-                if job["status"] == "pending"
-            ),
+            row[1] or 0,
 
             "processing_jobs":
-            sum(
-                1
-                for job in jobs
-                if job["status"] == "processing"
-            ),
+            row[2] or 0,
 
             "completed_jobs":
-            sum(
-                1
-                for job in jobs
-                if job["status"] == "completed"
-            ),
+            row[3] or 0,
 
             "failed_jobs":
-            sum(
-                1
-                for job in jobs
-                if job["status"] == "failed"
-            )
+            row[4] or 0
 
         }
