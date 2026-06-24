@@ -2,6 +2,12 @@ import threading
 
 from app.services.job_service import JobService
 from app.services.pipeline_service import PipelineService
+from app.services.cleanup_service import (
+    CleanupService
+)
+from app.services.logger_service import (
+    LoggerService
+)
 
 
 class BackgroundJobService:
@@ -33,6 +39,10 @@ class BackgroundJobService:
 
         try:
 
+            LoggerService.info(
+                f"Job Started: {job_id}"
+            )
+
             JobService.update_job(
                 job_id=job_id,
                 progress=1,
@@ -50,7 +60,17 @@ class BackgroundJobService:
                 result=result
             )
 
+            CleanupService.cleanup()
+
+            LoggerService.info(
+                f"Job Completed: {job_id}"
+            )
+
         except Exception as error:
+
+            LoggerService.error(
+                f"Job Failed: {job_id} | {error}"
+            )
 
             JobService.fail_job(
                 job_id=job_id,

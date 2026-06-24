@@ -7,6 +7,8 @@ from fastapi import (
 
 import os
 import shutil
+import uuid
+from pathlib import Path
 
 
 router = APIRouter(
@@ -25,7 +27,9 @@ ALLOWED_EXTENSIONS = {
 
     ".mov",
 
-    ".mkv"
+    ".mkv",
+
+    ".avi"
 
 }
 
@@ -35,9 +39,16 @@ async def upload_video(
     file: UploadFile = File(...)
 ):
 
-    extension = os.path.splitext(
+    if not file.filename:
+
+        raise HTTPException(
+            status_code=400,
+            detail="Filename is missing."
+        )
+
+    extension = Path(
         file.filename
-    )[1].lower()
+    ).suffix.lower()
 
     if (
         extension
@@ -50,8 +61,7 @@ async def upload_video(
 
             detail=
             (
-                "Only MP4, MOV and MKV "
-                "files are allowed."
+                "Only MP4, MOV, MKV and AVI files are allowed."
             )
 
         )
@@ -78,30 +88,58 @@ async def upload_video(
 
             detail=
             (
-                "Maximum upload size "
-                "is 500 MB."
+                "Maximum upload size is 500 MB."
             )
 
         )
 
+    upload_dir = (
+        "storage/uploads"
+    )
+
     os.makedirs(
-        "storage/uploads",
+        upload_dir,
         exist_ok=True
     )
 
-    file_path = (
-        f"storage/uploads/"
-        f"{file.filename}"
+    original_name = (
+        Path(file.filename)
+        .stem
     )
 
-    with open(
-        file_path,
-        "wb"
-    ) as buffer:
+    safe_name = (
+        original_name
+        .replace(" ", "_")
+    )
 
-        shutil.copyfileobj(
-            file.file,
-            buffer
+    unique_filename = (
+        f"{uuid.uuid4().hex[:8]}"
+        f"_{safe_name}"
+        f"{extension}"
+    )
+
+    file_path = os.path.join(
+        upload_dir,
+        unique_filename
+    )
+
+    try:
+
+        with open(
+            file_path,
+            "wb"
+        ) as buffer:
+
+            shutil.copyfileobj(
+                file.file,
+                buffer
+            )
+
+    except Exception as error:
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Upload failed: {error}"
         )
 
     return {
@@ -112,6 +150,9 @@ async def upload_video(
         "Video uploaded successfully 🎮",
 
         "filename":
+        unique_filename,
+
+        "original_filename":
         file.filename,
 
         "size_mb":
