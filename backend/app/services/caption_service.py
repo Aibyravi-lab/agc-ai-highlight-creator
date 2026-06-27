@@ -1,7 +1,7 @@
 import subprocess
 from pathlib import Path
 
-
+from app.config.config import settings
 class CaptionService:
 
     @staticmethod
@@ -11,7 +11,7 @@ class CaptionService:
     ):
 
         output_folder = Path(
-            "storage/highlights"
+            settings.HIGHLIGHT_FOLDER
         )
 
         output_folder.mkdir(

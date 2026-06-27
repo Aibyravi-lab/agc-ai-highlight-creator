@@ -1,11 +1,13 @@
 import json
 from pathlib import Path
 
+from app.config.config import settings
+
 
 class ResultExportService:
 
-    OUTPUT_DIR = (
-        Path("outputs/results")
+    OUTPUT_DIR = Path(
+        settings.RESULTS_FOLDER
     )
 
     @classmethod

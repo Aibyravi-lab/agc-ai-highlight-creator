@@ -1,7 +1,7 @@
 import subprocess
 import wave
 from pathlib import Path
-
+from app.config.config import settings
 import numpy as np
 
 
@@ -48,8 +48,7 @@ class AudioService:
         try:
 
             temp_folder = (
-                Path("storage")
-                / "audio"
+                Path(settings.OUTPUT_FOLDER
             )
 
             temp_folder.mkdir(

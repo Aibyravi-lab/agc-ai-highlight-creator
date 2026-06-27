@@ -1,11 +1,13 @@
 import json
 from pathlib import Path
 
+from app.config.config import settings
+
 
 class ProgressService:
 
     PROGRESS_FILE = Path(
-        "storage/progress.json"
+        settings.PROGRESS_FILE
     )
 
     @classmethod
@@ -36,9 +38,7 @@ class ProgressService:
             )
 
     @classmethod
-    def get_progress(
-        cls
-    ):
+    def get_progress(cls):
 
         if not cls.PROGRESS_FILE.exists():
 
@@ -53,6 +53,4 @@ class ProgressService:
             encoding="utf-8"
         ) as file:
 
-            return json.load(
-                file
-            )
+            return json.load(file)

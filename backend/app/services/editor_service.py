@@ -1,7 +1,7 @@
 import subprocess
 from pathlib import Path
 
-
+from app.config.config import settings
 class EditorService:
 
     @staticmethod
@@ -11,7 +11,7 @@ class EditorService:
     ):
 
         thumbnail_folder = Path(
-            "storage/thumbnails"
+            settings.THUMBNAIL_FOLDER
         )
 
         thumbnail_folder.mkdir(
@@ -68,7 +68,7 @@ class EditorService:
     ):
 
         output_folder = Path(
-            "storage/highlights"
+            settings.HIGHLIGHT_FOLDER
         )
 
         output_folder.mkdir(

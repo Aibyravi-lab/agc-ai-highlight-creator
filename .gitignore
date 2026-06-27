@@ -17,3 +17,9 @@ frontend/node_modules/
 Thumbs.db
 backend/storage/
 outputs/results/
+backend/outputs/
+backend/uploads/
+backend/storage/
+frontend/.next/
+frontend/node_modules/
+logs/*.log

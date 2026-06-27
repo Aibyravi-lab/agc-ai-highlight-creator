@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from dotenv import load_dotenv
+
+from app.config.config import settings
 
 from app.services.database_service import DatabaseService
 from app.services.ffmpeg_service import FFmpegService
@@ -18,6 +21,7 @@ from app.routers.history import (
     router as history_router
 )
 
+load_dotenv()
 
 print(
     "🚀 AGC Startup Validation"
@@ -39,17 +43,17 @@ print(
 
 
 app = FastAPI(
-    title="AGC Backend",
-    version="0.1"
+    title=settings.APP_NAME,
+    version=settings.APP_VERSION
 )
 
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",
-        "https://highlightai.in",
-        "https://www.highlightai.in"
+        settings.FRONTEND_URL,
+        settings.PRODUCTION_URL,
+        settings.WWW_PRODUCTION_URL
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -104,7 +108,7 @@ def version():
 
         "project": "AGC",
 
-        "version": "0.0.16",
+        "version": settings.APP_VERSION,
 
         "status":
         "Production Readiness Phase"

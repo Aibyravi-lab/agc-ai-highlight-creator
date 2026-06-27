@@ -180,3 +180,7 @@
 2026-06-24 22:14:45,232 | INFO | Deleted thumbnail: storage\thumbnails\thumbnail_840.jpg
 2026-06-24 22:14:45,232 | INFO | Deleted thumbnail: storage\thumbnails\thumbnail_90.jpg
 2026-06-24 22:14:45,232 | INFO | Job Completed: cd0079c0-09e0-4e1e-beba-82589f550974
+2026-06-24 23:07:12,770 | INFO | AGC Logger Initialized
+2026-06-24 23:07:12,774 | INFO | AGC Startup Validation Passed
+2026-06-25 18:17:50,578 | INFO | AGC Logger Initialized
+2026-06-25 18:17:50,579 | INFO | AGC Startup Validation Passed

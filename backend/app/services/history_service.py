@@ -2,11 +2,13 @@ import json
 from pathlib import Path
 from datetime import datetime
 
+from app.config.config import settings
+
 
 class HistoryService:
 
     HISTORY_FILE = Path(
-        "storage/history.json"
+        settings.HISTORY_FILE
     )
 
     @classmethod
@@ -33,10 +35,8 @@ class HistoryService:
             ) as file:
 
                 try:
-                    history = json.load(
-                        file
-                    )
-                except:
+                    history = json.load(file)
+                except Exception:
                     history = []
 
         history.append({
@@ -70,9 +70,7 @@ class HistoryService:
             )
 
     @classmethod
-    def get_history(
-        cls
-    ):
+    def get_history(cls):
 
         if not cls.HISTORY_FILE.exists():
             return []
@@ -83,6 +81,4 @@ class HistoryService:
             encoding="utf-8"
         ) as file:
 
-            return json.load(
-                file
-            )
+            return json.load(file)

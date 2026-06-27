@@ -1,12 +1,16 @@
 import sqlite3
 from pathlib import Path
 
+from app.config.config import settings
+
 
 class DatabaseService:
 
-    DB_DIR = Path("data")
+    DB_DIR = Path(
+        settings.DATABASE_FOLDER
+    )
 
-    DB_PATH = DB_DIR / "agc.db"
+    DB_PATH = DB_DIR / settings.DATABASE_NAME
 
     @classmethod
     def initialize(cls):

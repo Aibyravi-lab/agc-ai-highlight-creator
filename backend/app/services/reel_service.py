@@ -1,7 +1,7 @@
 import subprocess
 from pathlib import Path
 
-
+from app.config.config import settings
 class ReelService:
 
     @staticmethod
@@ -10,7 +10,7 @@ class ReelService:
     ):
 
         output_folder = Path(
-            "storage/highlights"
+            settings.HIGHLIGHT_FOLDER
         )
 
         vertical_video = (
@@ -62,7 +62,7 @@ class ReelService:
     ):
 
         output_folder = Path(
-            "storage/highlights"
+            settings.HIGHLIGHT_FOLDER
         )
 
         output_folder.mkdir(

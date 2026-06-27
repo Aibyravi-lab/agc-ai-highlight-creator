@@ -1,6 +1,7 @@
 import subprocess
 from pathlib import Path
 from datetime import datetime
+from app.config.config import settings
 
 
 class FrameService:
@@ -15,8 +16,7 @@ class FrameService:
         )
 
         output_folder = (
-            Path("storage")
-            / "frames"
+            Path(settings.FRAME_FOLDER)
             / f"{video_name}_{current_time}"
         )
 

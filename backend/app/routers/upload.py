@@ -10,6 +10,8 @@ import shutil
 import uuid
 from pathlib import Path
 
+from app.config.config import settings
+
 
 router = APIRouter(
     prefix="/upload",
@@ -17,9 +19,7 @@ router = APIRouter(
 )
 
 
-MAX_FILE_SIZE = (
-    500 * 1024 * 1024
-)
+MAX_FILE_SIZE = settings.MAX_UPLOAD_SIZE
 
 ALLOWED_EXTENSIONS = {
 
@@ -59,8 +59,7 @@ async def upload_video(
 
             status_code=400,
 
-            detail=
-            (
+            detail=(
                 "Only MP4, MOV, MKV and AVI files are allowed."
             )
 
@@ -86,16 +85,11 @@ async def upload_video(
 
             status_code=400,
 
-            detail=
-            (
-                "Maximum upload size is 500 MB."
-            )
+            detail="Maximum upload size is 500 MB."
 
         )
 
-    upload_dir = (
-        "storage/uploads"
-    )
+    upload_dir = settings.UPLOAD_FOLDER
 
     os.makedirs(
         upload_dir,

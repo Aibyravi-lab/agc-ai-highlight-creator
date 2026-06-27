@@ -1,7 +1,7 @@
 from pathlib import Path
 from datetime import datetime, timedelta
 import shutil
-
+from app.config.config import settings
 from app.services.logger_service import (
     LoggerService
 )
@@ -22,7 +22,7 @@ class CleanupService:
     def cleanup_uploads():
 
         uploads_dir = Path(
-            "storage/uploads"
+            settings.UPLOAD_FOLDER
         )
 
         if not uploads_dir.exists():
@@ -62,7 +62,7 @@ class CleanupService:
     def cleanup_frames():
 
         frames_dir = Path(
-            "storage/frames"
+            settings.FRAME_FOLDER
         )
 
         if not frames_dir.exists():
@@ -102,7 +102,7 @@ class CleanupService:
     def cleanup_thumbnails():
 
         thumbnails_dir = Path(
-            "storage/thumbnails"
+            settings.THUMBNAIL_FOLDER
         )
 
         if not thumbnails_dir.exists():

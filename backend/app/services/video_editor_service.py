@@ -1,7 +1,7 @@
 import subprocess
 from pathlib import Path
 
-
+from app.config.config import settings
 class VideoEditorService:
 
 
@@ -13,9 +13,8 @@ class VideoEditorService:
     ):
 
         # Create output folder
-        output_folder = (
-            Path("storage")
-            / "highlights"
+        output_folder = 
+            Path(settings.HIGHLIGHT_FOLDER
         )
 
         output_folder.mkdir(
