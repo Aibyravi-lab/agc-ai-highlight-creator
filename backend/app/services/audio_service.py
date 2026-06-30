@@ -48,7 +48,7 @@ class AudioService:
         try:
 
             temp_folder = (
-                Path(settings.OUTPUT_FOLDER
+                Path(settings.OUTPUT_FOLDER)
             )
 
             temp_folder.mkdir(

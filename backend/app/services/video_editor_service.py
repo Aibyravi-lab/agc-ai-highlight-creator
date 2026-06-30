@@ -13,8 +13,8 @@ class VideoEditorService:
     ):
 
         # Create output folder
-        output_folder = 
-            Path(settings.HIGHLIGHT_FOLDER
+        output_folder = (
+            Path(settings.HIGHLIGHT_FOLDER)
         )
 
         output_folder.mkdir(
