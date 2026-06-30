@@ -1,4 +1,5 @@
 import os
+import secrets
 
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
@@ -28,7 +29,7 @@ class Settings(BaseSettings):
 
     APP_VERSION: str = os.getenv(
         "APP_VERSION",
-        "0.0.16"
+        "0.0.17"
     )
 
     FRONTEND_URL: str = os.getenv(
@@ -100,6 +101,23 @@ class Settings(BaseSettings):
         os.getenv(
             "MAX_UPLOAD_SIZE",
             "524288000"
+        )
+    )
+
+    JWT_SECRET_KEY: str = os.getenv(
+        "JWT_SECRET_KEY",
+        secrets.token_hex(32)
+    )
+
+    JWT_ALGORITHM: str = os.getenv(
+        "JWT_ALGORITHM",
+        "HS256"
+    )
+
+    JWT_EXPIRY_HOURS: int = int(
+        os.getenv(
+            "JWT_EXPIRY_HOURS",
+            "24"
         )
     )
 

@@ -20,6 +20,7 @@ from app.routers.editor import router as editor_router
 from app.routers.history import (
     router as history_router
 )
+from app.routers.auth import router as auth_router
 
 load_dotenv()
 
@@ -69,6 +70,7 @@ app.include_router(pipeline_router)
 app.include_router(clip_router)
 app.include_router(editor_router)
 app.include_router(history_router)
+app.include_router(auth_router)
 
 app.mount(
     "/storage",

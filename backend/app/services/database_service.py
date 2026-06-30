@@ -52,6 +52,26 @@ class DatabaseService:
             """
         )
 
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                name TEXT NOT NULL,
+
+                email TEXT NOT NULL UNIQUE,
+
+                password_hash TEXT NOT NULL,
+
+                created_at TEXT NOT NULL,
+
+                last_login TEXT
+
+            )
+            """
+        )
+
         connection.commit()
 
         connection.close()
