@@ -10,6 +10,7 @@ import { HistoryPanel } from "../components/HistoryPanel";
 import { DownloadPanel } from "../components/DownloadPanel";
 import { ResultPanel } from "../components/ResultPanel";
 import { useAuth } from "../context/AuthContext";
+import type { AuthUser } from "../types/auth";
 import type { PipelineJob } from "../types/pipeline";
 
 export default function Home() {
@@ -21,6 +22,30 @@ export default function Home() {
       router.replace("/login");
     }
   }, [authLoading, user, router]);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#08090d] flex items-center justify-center">
+        <div className="w-5 h-5 rounded-full border-2 border-green-500 border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null;
+  }
+
+  return <DashboardContent user={user} logout={logout} />;
+}
+
+function DashboardContent({
+  user,
+  logout,
+}: {
+  user: AuthUser;
+  logout: () => void;
+}) {
+  const router = useRouter();
 
   const {
     selectedFile,
@@ -38,6 +63,11 @@ export default function Home() {
     clearError,
   } = usePipeline();
 
+  const handleLogout = () => {
+    logout();
+    router.replace("/login");
+  };
+
   const handleGenerateHighlights = async () => {
     if (selectedFile) {
       await generateHighlights(selectedFile);
@@ -47,14 +77,6 @@ export default function Home() {
   const currentJob: PipelineJob | null = currentJobId
     ? (allJobs.find((j) => j.job_id === currentJobId) ?? null)
     : null;
-
-  if (authLoading || !user) {
-    return (
-      <div className="min-h-screen bg-[#08090d] flex items-center justify-center">
-        <div className="w-5 h-5 rounded-full border-2 border-green-500 border-t-transparent animate-spin" />
-      </div>
-    );
-  }
 
   return (
     <main className="min-h-screen bg-[#08090d] text-white">
@@ -70,7 +92,7 @@ export default function Home() {
             <div className="flex items-center gap-3">
               <span className="text-gray-500 text-sm hidden sm:block">{user.name}</span>
               <button
-                onClick={logout}
+                onClick={handleLogout}
                 className="text-sm text-gray-400 hover:text-white border border-[#1a1d2e] hover:border-[#2a2d3e] px-3 py-1.5 rounded-lg transition-colors"
               >
                 Sign out
