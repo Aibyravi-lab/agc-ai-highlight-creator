@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 
 from app.services.pipeline_service import PipelineService
 from app.services.progress_service import ProgressService
@@ -6,6 +6,7 @@ from app.services.job_service import JobService
 from app.services.background_job_service import (
     BackgroundJobService
 )
+from app.dependencies import get_current_user
 
 
 router = APIRouter(
@@ -38,7 +39,8 @@ def process_video(video_path: str):
 
 @router.post("/start")
 def start_video_processing(
-    video_path: str
+    video_path: str,
+    current_user: dict = Depends(get_current_user)
 ):
 
     try:
@@ -72,7 +74,9 @@ def start_video_processing(
 
 
 @router.get("/jobs")
-def get_all_jobs():
+def get_all_jobs(
+    current_user: dict = Depends(get_current_user)
+):
 
     jobs = JobService.get_all_jobs()
 
@@ -91,7 +95,8 @@ def get_all_jobs():
 
 @router.get("/job/{job_id}")
 def get_job_status(
-    job_id: str
+    job_id: str,
+    current_user: dict = Depends(get_current_user)
 ):
 
     job = JobService.get_job(
@@ -115,7 +120,9 @@ def get_job_status(
 
 
 @router.get("/jobs/stats")
-def get_job_stats():
+def get_job_stats(
+    current_user: dict = Depends(get_current_user)
+):
 
     return {
 
@@ -128,7 +135,9 @@ def get_job_stats():
 
 
 @router.get("/progress")
-def get_progress():
+def get_progress(
+    current_user: dict = Depends(get_current_user)
+):
 
     return {
         "success": True,

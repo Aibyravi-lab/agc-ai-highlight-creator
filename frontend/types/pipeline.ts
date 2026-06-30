@@ -86,6 +86,7 @@ export interface PipelineJob {
   job_id: string;
   status: JobStatus;
   progress: number;
+  message?: string;
   created_at?: string;
   updated_at?: string;
   error?: string | null;
@@ -117,7 +118,7 @@ export interface JobStatsResponse {
 
 export interface ProgressData {
   progress: number;
-  current_step?: string;
+  status?: string;
 }
 
 export interface ProgressResponse {

@@ -47,6 +47,11 @@ export function usePipeline() {
 
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Ref that always holds the latest currentJobId without causing stale closures
+  // in setInterval callbacks. Updated synchronously on every render.
+  const currentJobIdRef = useRef<string | null>(null);
+  currentJobIdRef.current = state.currentJobId;
+
   // Set selected file
   const setSelectedFile = useCallback((file: File | null) => {
     setState((prev) => ({ ...prev, selectedFile: file }));
@@ -67,38 +72,33 @@ export function usePipeline() {
 
   // Dedicated effect for continuous job polling
   useEffect(() => {
-    // Only poll if we have an active job
     if (!state.currentJobId) {
       return;
     }
 
-    const jobId = state.currentJobId; // Capture jobId as non-null string
+    const jobId = state.currentJobId;
 
-    // Start polling loop every 2 seconds
+    // Guard: clear any leftover interval before creating a new one
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+
     pollIntervalRef.current = setInterval(async () => {
       try {
         const response = await getJob(jobId);
         const job = response.data;
 
-        // Update progress (never moves backwards)
-        setState((prev) => ({
-          ...prev,
-          progress: Math.max(prev.progress, job.progress || 0),
-          progressStatus: job.status,
-        }));
+        // Log raw getJob() return before any setState
+        console.log("[AGC] getJob() response:", JSON.stringify(response));
+        console.log("[AGC] job fields:", { status: job?.status, message: job?.message, progress: job?.progress });
 
-        // Stop polling when job completes
         if (job.status === "completed") {
           stopPolling();
-          setState((prev) => ({
-            ...prev,
-            result: job.result,
-            loading: false,
-            progress: 100,
-            progressStatus: "Completed",
-            currentJobId: null,
-          }));
-          // Refresh history after completion
+          setState((prev) => {
+            console.log("[AGC][setState] source=completion", { prevProgressStatus: prev.progressStatus, nextProgressStatus: "Completed", jobStatus: job.status, jobMessage: job.message });
+            return { ...prev, result: job.result ?? null, loading: false, progress: 100, progressStatus: "Completed", currentJobId: null };
+          });
           try {
             const historyResponse = await getHistory();
             setState((prev) => ({
@@ -109,21 +109,23 @@ export function usePipeline() {
             console.error("History load failed:", err);
           }
         } else if (job.status === "failed") {
-          // Stop polling when job fails
           stopPolling();
-          setState((prev) => ({
-            ...prev,
-            loading: false,
-            error: job.error || "Processing failed",
-            currentJobId: null,
-          }));
+          setState((prev) => {
+            console.log("[AGC][setState] source=failure (no progressStatus change)", { prevProgressStatus: prev.progressStatus, jobStatus: job.status, jobMessage: job.message });
+            return { ...prev, loading: false, error: job.error || "Processing failed", currentJobId: null };
+          });
+        } else {
+          setState((prev) => {
+            const nextProgressStatus = job.message || job.status;
+            console.log("[AGC][setState] source=poll", { prevProgressStatus: prev.progressStatus, nextProgressStatus, jobStatus: job.status, jobMessage: job.message });
+            return { ...prev, progress: Math.max(prev.progress, job.progress ?? 0), progressStatus: nextProgressStatus };
+          });
         }
       } catch (err) {
         console.error("Polling error:", err);
       }
-    }, 2000); // Poll every 2 seconds
+    }, 2000);
 
-    // Cleanup: stop polling when effect unmounts or job ID changes
     return () => {
       stopPolling();
     };
@@ -140,30 +142,23 @@ export function usePipeline() {
         return;
       }
 
-      setState((prev) => ({
-        ...prev,
-        loading: true,
-        error: null,
-        result: null,
-        progress: 0,
-        progressStatus: "Uploading...",
-      }));
+      setState((prev) => {
+        console.log("[AGC][setState] source=upload", { prevProgressStatus: prev.progressStatus, nextProgressStatus: "Uploading...", jobStatus: undefined, jobMessage: undefined });
+        return { ...prev, loading: true, error: null, result: null, progress: 0, progressStatus: "Uploading..." };
+      });
 
       try {
-        // Step 1: Upload video
         const uploadResponse = await uploadVideo(file);
 
         if (!uploadResponse.location) {
           throw new Error("Upload location missing");
         }
 
-        setState((prev) => ({
-          ...prev,
-          progressStatus: "Starting pipeline...",
-          progress: 10,
-        }));
+        setState((prev) => {
+          console.log("[AGC][setState] source=start", { prevProgressStatus: prev.progressStatus, nextProgressStatus: "Starting pipeline...", jobStatus: undefined, jobMessage: undefined });
+          return { ...prev, progressStatus: "Starting pipeline...", progress: 10 };
+        });
 
-        // Step 2: Start pipeline
         const startResponse = await startPipeline(uploadResponse.location);
 
         if (!startResponse.job_id) {
@@ -172,14 +167,10 @@ export function usePipeline() {
 
         const jobId = startResponse.job_id;
 
-        // Step 3: Store job ID to trigger polling effect
-        setState((prev) => ({
-          ...prev,
-          currentJobId: jobId,
-          progressStatus: "Processing...",
-          progress: 20,
-        }));
-        // Polling effect automatically starts when currentJobId is set
+        setState((prev) => {
+          console.log("[AGC][setState] source=start-job-id", { prevProgressStatus: prev.progressStatus, nextProgressStatus: "Processing...", jobStatus: undefined, jobMessage: undefined });
+          return { ...prev, currentJobId: jobId, progressStatus: "Processing...", progress: 20 };
+        });
       } catch (err) {
         const errorMessage =
           err instanceof Error ? err.message : "Processing failed";
@@ -232,45 +223,45 @@ export function usePipeline() {
     }
   }, []);
 
-  // Load progress - only when no active job
+  // Load progress - only when no active job.
+  // Uses ref so this callback is stable and never closes over stale state.
   const loadProgress = useCallback(async () => {
-    // Skip if there's an active job being polled
-    if (state.currentJobId) {
+    if (currentJobIdRef.current) {
       return;
     }
-
     try {
       const response = await getProgress();
-      setState((prev) => ({
-        ...prev,
-        progress: Math.max(prev.progress, response.data?.progress || 0),
-        progressStatus: response.data?.current_step || "",
-      }));
+      setState((prev) => {
+        const nextProgressStatus = response.data?.status || "";
+        console.log("[AGC][setState] source=loadProgress", { prevProgressStatus: prev.progressStatus, nextProgressStatus, jobStatus: undefined, jobMessage: undefined, currentJobIdRef: currentJobIdRef.current });
+        return { ...prev, progress: Math.max(prev.progress, response.data?.progress ?? 0), progressStatus: nextProgressStatus };
+      });
     } catch (err) {
       console.error("Progress load failed:", err);
     }
-  }, [state.currentJobId]);
+  }, []); // stable — reads currentJobIdRef, not state
 
-  // Initialize - load initial data and refresh dashboard
+  // Initialize once on mount. Does NOT depend on currentJobId:
+  // the interval callback reads currentJobIdRef.current for a fresh value
+  // without needing the effect to re-run on every job state change.
   useEffect(() => {
     loadHistory();
     loadJobStats();
     loadAllJobs();
 
-    // Refresh dashboard every 5 seconds (don't interfere with job polling)
     const interval = setInterval(() => {
-      // Only call loadProgress when there's no active job
-      if (!state.currentJobId) {
+      if (!currentJobIdRef.current) {
         loadProgress();
       }
       loadJobStats();
       loadAllJobs();
+      loadHistory();
     }, 5000);
 
     return () => {
       clearInterval(interval);
     };
-  }, [loadHistory, loadJobStats, loadAllJobs, loadProgress, state.currentJobId]);
+  }, [loadHistory, loadJobStats, loadAllJobs, loadProgress]);
 
   const clearError = useCallback(() => {
     setState((prev) => ({ ...prev, error: null }));

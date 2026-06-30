@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { usePipeline } from "../hooks/usePipeline";
 import { UploadPanel } from "../components/UploadPanel";
 import { ProgressPanel } from "../components/ProgressPanel";
@@ -7,9 +9,19 @@ import { StatsPanel } from "../components/StatsPanel";
 import { HistoryPanel } from "../components/HistoryPanel";
 import { DownloadPanel } from "../components/DownloadPanel";
 import { ResultPanel } from "../components/ResultPanel";
-
+import { useAuth } from "../context/AuthContext";
+import type { PipelineJob } from "../types/pipeline";
 
 export default function Home() {
+  const { user, loading: authLoading, logout } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.replace("/login");
+    }
+  }, [authLoading, user, router]);
+
   const {
     selectedFile,
     loading,
@@ -20,6 +32,7 @@ export default function Home() {
     allJobs,
     jobStats,
     error,
+    currentJobId,
     setSelectedFile,
     generateHighlights,
     clearError,
@@ -31,33 +44,83 @@ export default function Home() {
     }
   };
 
+  const currentJob: PipelineJob | null = currentJobId
+    ? (allJobs.find((j) => j.job_id === currentJobId) ?? null)
+    : null;
+
+  if (authLoading || !user) {
+    return (
+      <div className="min-h-screen bg-[#08090d] flex items-center justify-center">
+        <div className="w-5 h-5 rounded-full border-2 border-green-500 border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
   return (
-    <main className="min-h-screen bg-black text-white flex flex-col items-center p-10">
-      <h1 className="text-6xl font-bold">🎮 AGC</h1>
-      <p className="mt-4 text-3xl">AI Gaming Highlight Creator</p>
+    <main className="min-h-screen bg-[#08090d] text-white">
+      <div className="max-w-5xl mx-auto px-6 py-10 space-y-8">
 
-      <UploadPanel
-        selectedFile={selectedFile}
-        loading={loading}
-        onSelectFile={setSelectedFile}
-        onGenerateHighlights={handleGenerateHighlights}
-      />
+        {/* Header */}
+        <div className="pb-2 border-b border-[#1a1d2e]">
+          <div className="flex items-center justify-between">
+            <div className="flex items-baseline gap-3">
+              <h1 className="text-2xl font-bold tracking-tight">AGC</h1>
+              <span className="text-gray-500 text-sm">AI Gaming Highlight Creator</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-gray-500 text-sm hidden sm:block">{user.name}</span>
+              <button
+                onClick={logout}
+                className="text-sm text-gray-400 hover:text-white border border-[#1a1d2e] hover:border-[#2a2d3e] px-3 py-1.5 rounded-lg transition-colors"
+              >
+                Sign out
+              </button>
+            </div>
+          </div>
+        </div>
 
-      <ProgressPanel
-        loading={loading}
-        progress={progress}
-        progressStatus={progressStatus}
-        error={error}
-        onClearError={clearError}
-      />
+        {/* Upload */}
+        <section>
+          <UploadPanel
+            selectedFile={selectedFile}
+            loading={loading}
+            onSelectFile={setSelectedFile}
+            onGenerateHighlights={handleGenerateHighlights}
+          />
+        </section>
 
-      <StatsPanel jobStats={jobStats} allJobs={allJobs} />
+        {/* Current Job */}
+        <section>
+          <ProgressPanel
+            loading={loading}
+            progress={progress}
+            progressStatus={progressStatus}
+            error={error}
+            onClearError={clearError}
+            currentJobId={currentJobId}
+            currentJob={currentJob}
+          />
+        </section>
 
-      <HistoryPanel history={history} />
+        {/* System Statistics + Recent Jobs */}
+        <section>
+          <StatsPanel jobStats={jobStats} allJobs={allJobs} />
+        </section>
 
-      <DownloadPanel result={result} />
+        {/* History */}
+        <section>
+          <HistoryPanel history={history} />
+        </section>
 
-      <ResultPanel result={result} />
+        {/* Results */}
+        {result && (
+          <section className="space-y-6">
+            <DownloadPanel result={result} />
+            <ResultPanel result={result} />
+          </section>
+        )}
+
+      </div>
     </main>
   );
 }

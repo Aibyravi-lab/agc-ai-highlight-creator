@@ -1,0 +1,77 @@
+import type { AuthUser, AuthResult } from "../types/auth";
+
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL?.trim() || "";
+
+async function authRequest<T>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const res = await fetch(`${API_BASE}${endpoint}`, {
+    cache: "no-store",
+    ...options,
+  });
+
+  if (!res.ok) {
+    let message = "Request failed.";
+    const text = await res.text().catch(() => "");
+    if (text) {
+      try {
+        const err = JSON.parse(text);
+        message = err.detail || err.message || JSON.stringify(err);
+      } catch {
+        message = text;
+      }
+    }
+    throw new Error(message);
+  }
+
+  return res.json();
+}
+
+export async function login(
+  email: string,
+  password: string
+): Promise<AuthResult> {
+  const data = await authRequest<{
+    access_token: string;
+    user: AuthUser;
+  }>("/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+
+  return { token: data.access_token, user: data.user };
+}
+
+export async function register(
+  name: string,
+  email: string,
+  password: string
+): Promise<AuthResult> {
+  const data = await authRequest<{
+    access_token: string;
+    user: AuthUser;
+  }>("/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, email, password }),
+  });
+
+  return { token: data.access_token, user: data.user };
+}
+
+export async function getCurrentUser(token: string): Promise<AuthUser> {
+  const data = await authRequest<{ user: AuthUser }>("/auth/me", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  return data.user;
+}
+
+export function logout(): void {
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("agc_token");
+  }
+}

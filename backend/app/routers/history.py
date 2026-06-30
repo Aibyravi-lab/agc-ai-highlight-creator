@@ -1,8 +1,9 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app.services.history_service import (
     HistoryService
 )
+from app.dependencies import get_current_user
 
 router = APIRouter(
     prefix="/history",
@@ -11,7 +12,9 @@ router = APIRouter(
 
 
 @router.get("/")
-def get_history():
+def get_history(
+    current_user: dict = Depends(get_current_user)
+):
 
     history = (
         HistoryService.get_history()

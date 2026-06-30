@@ -2,7 +2,8 @@ from fastapi import (
     APIRouter,
     UploadFile,
     File,
-    HTTPException
+    HTTPException,
+    Depends
 )
 
 import os
@@ -11,6 +12,7 @@ import uuid
 from pathlib import Path
 
 from app.config.config import settings
+from app.dependencies import get_current_user
 
 
 router = APIRouter(
@@ -36,7 +38,8 @@ ALLOWED_EXTENSIONS = {
 
 @router.post("/")
 async def upload_video(
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user)
 ):
 
     if not file.filename:

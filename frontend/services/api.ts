@@ -1,11 +1,20 @@
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  process.env.NEXT_PUBLIC_API_URL?.trim() || "";
+
+function authHeaders(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  const token = localStorage.getItem("agc_token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 async function request(
   endpoint: string,
   options: RequestInit = {}
 ) {
-  const response = await fetch(`${API_BASE}${endpoint}`, options);
+  const response = await fetch(`${API_BASE}${endpoint}`, {
+    cache: "no-store",
+    ...options,
+  });
 
   if (!response.ok) {
     let message = "Something went wrong.";
@@ -25,6 +34,16 @@ async function request(
   }
 
   return response.json();
+}
+
+function authedRequest(endpoint: string, options: RequestInit = {}) {
+  return request(endpoint, {
+    ...options,
+    headers: {
+      ...authHeaders(),
+      ...(options.headers as Record<string, string> | undefined),
+    },
+  });
 }
 
 /**
@@ -77,6 +96,7 @@ function mapJob(backendJob: any) {
     job_id: backendJob.job_id,
     status: mapJobStatus(backendJob.status),
     progress: backendJob.progress,
+    message: backendJob.message || "",
     created_at: backendJob.created_at,
     error: backendJob.error || null,
     result: mapResult(backendJob.result),
@@ -87,14 +107,14 @@ export async function uploadVideo(file: File) {
   const formData = new FormData();
   formData.append("file", file);
 
-  return request("/upload/", {
+  return authedRequest("/upload/", {
     method: "POST",
     body: formData,
   });
 }
 
 export async function startPipeline(videoPath: string) {
-  return request(
+  return authedRequest(
     `/pipeline/start?video_path=${encodeURIComponent(videoPath)}`,
     {
       method: "POST",
@@ -103,7 +123,7 @@ export async function startPipeline(videoPath: string) {
 }
 
 export async function getJob(jobId: string) {
-  const response = await request(`/pipeline/job/${jobId}`);
+  const response = await authedRequest(`/pipeline/job/${jobId}`);
   return {
     ...response,
     data: mapJob(response.data),
@@ -111,7 +131,7 @@ export async function getJob(jobId: string) {
 }
 
 export async function getJobs() {
-  const response = await request("/pipeline/jobs");
+  const response = await authedRequest("/pipeline/jobs");
   return {
     ...response,
     data: response.data.map(mapJob),
@@ -119,7 +139,7 @@ export async function getJobs() {
 }
 
 export async function getJobStats() {
-  const response = await request("/pipeline/jobs/stats");
+  const response = await authedRequest("/pipeline/jobs/stats");
   const stats = response.data;
   return {
     success: response.success,
@@ -133,11 +153,11 @@ export async function getJobStats() {
 }
 
 export async function getProgress() {
-  return request("/pipeline/progress");
+  return authedRequest("/pipeline/progress");
 }
 
 export async function getHistory() {
-  const response = await request("/history/");
+  const response = await authedRequest("/history/");
   return {
     success: response.success,
     data: response.data.map((item: any) => ({
@@ -183,50 +203,53 @@ export function getResultJsonUrl(resultJsonPath: string | undefined): string {
 }
 
 /**
- * Download functions that handle window.open() internally
+ * Download functions — fetch as blob so the browser saves the file
+ * instead of opening it in a new tab.
  */
 
-export function downloadReel(reelPath: string | undefined) {
+function filenameFromUrl(url: string): string {
+  return decodeURIComponent(url.split("/").pop() || "download");
+}
+
+async function blobDownload(url: string, filename: string): Promise<void> {
+  const response = await fetch(url);
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objectUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(objectUrl);
+}
+
+export async function downloadReel(reelPath: string | undefined): Promise<void> {
   const url = getReelUrl(reelPath);
-  if (!url) {
-    alert("No reel available");
-    return;
-  }
-  window.open(url, "_blank");
+  if (!url) return;
+  await blobDownload(url, filenameFromUrl(url));
 }
 
-export function downloadVerticalReel(verticalPath: string | undefined) {
+export async function downloadVerticalReel(verticalPath: string | undefined): Promise<void> {
   const url = getVerticalReelUrl(verticalPath);
-  if (!url) {
-    alert("No vertical reel available");
-    return;
-  }
-  window.open(url, "_blank");
+  if (!url) return;
+  await blobDownload(url, filenameFromUrl(url));
 }
 
-export function downloadThumbnail(thumbnailPath: string | undefined) {
+export async function downloadThumbnail(thumbnailPath: string | undefined): Promise<void> {
   const url = getThumbnailUrl(thumbnailPath);
-  if (!url) {
-    alert("No thumbnail available");
-    return;
-  }
-  window.open(url, "_blank");
+  if (!url) return;
+  await blobDownload(url, filenameFromUrl(url));
 }
 
-export function downloadResultJson(resultJsonPath: string | undefined) {
+export async function downloadResultJson(resultJsonPath: string | undefined): Promise<void> {
   const url = getResultJsonUrl(resultJsonPath);
-  if (!url) {
-    alert("Results JSON not found");
-    return;
-  }
-  window.open(url, "_blank");
+  if (!url) return;
+  await blobDownload(url, filenameFromUrl(url));
 }
 
-export function downloadClip(clipPath: string | undefined) {
+export async function downloadClip(clipPath: string | undefined): Promise<void> {
   const url = getClipUrl(clipPath);
-  if (!url) {
-    alert("No clip available");
-    return;
-  }
-  window.open(url, "_blank");
+  if (!url) return;
+  await blobDownload(url, filenameFromUrl(url));
 }

@@ -1,257 +1,253 @@
 "use client";
 
+import { useState } from "react";
 import {
+  downloadReel,
+  downloadVerticalReel,
   downloadThumbnail,
   downloadResultJson,
-  getThumbnailUrl,
+  getReelUrl,
   getClipUrl,
 } from "../services/api";
-import type {
-  ExtendedPipelineResult,
-  HighlightItem,
-} from "../types/pipeline";
+import type { ExtendedPipelineResult, HighlightItem } from "../types/pipeline";
 
 interface ResultPanelProps {
   result: ExtendedPipelineResult | null;
 }
 
-export function ResultPanel({ result }: ResultPanelProps) {
-  if (!result) {
-    return null;
-  }
+function CopyButton({ text, label }: { text: string; label: string }) {
+  const [copied, setCopied] = useState(false);
 
-  const copyToClipboard = (text: string, message: string) => {
+  const handleCopy = () => {
     navigator.clipboard.writeText(text);
-    alert(message);
-  };
-
-  const handleDownloadThumbnail = () => {
-    downloadThumbnail(result.thumbnail);
-  };
-
-  const handleDownloadResultJson = () => {
-    downloadResultJson(result.result_json);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <div className="mt-12 w-full max-w-6xl">
-      <h2 className="text-4xl font-bold mb-6">Results</h2>
+    <button
+      onClick={handleCopy}
+      className="shrink-0 px-3 py-1 rounded-md text-xs font-semibold border transition-colors
+        border-[#2a2d3e] text-gray-400 hover:text-white hover:border-[#3a3d4e]"
+    >
+      {copied ? "Copied!" : label}
+    </button>
+  );
+}
 
-      {result.stats && (
-        <div className="mb-6 p-6 rounded-lg border border-yellow-500 bg-gray-900">
-          <h3 className="text-2xl font-bold text-yellow-400 mb-4">
-            📊 Processing Stats
-          </h3>
-          <div className="grid gap-4 md:grid-cols-4">
-            <div>
-              <p className="text-gray-400">Video Duration</p>
-              <p className="text-2xl font-bold">
-                {result.stats.video_duration}s
-              </p>
-            </div>
-            <div>
-              <p className="text-gray-400">Frames Analyzed</p>
-              <p className="text-2xl font-bold">
-                {result.stats.frames_analyzed}
-              </p>
-            </div>
-            <div>
-              <p className="text-gray-400">Highlights Found</p>
-              <p className="text-2xl font-bold">
-                {result.stats.highlights_found}
-              </p>
-            </div>
-            <div>
-              <p className="text-gray-400">Processing Time</p>
-              <p className="text-2xl font-bold">
-                {result.stats.processing_time}s
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+function StatCard({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-lg bg-[#0a0b0f] border border-[#1a1d2e] px-4 py-3">
+      <p className="text-xs text-gray-500 mb-1">{label}</p>
+      <p className="text-2xl font-bold text-white tabular-nums">{value}</p>
+    </div>
+  );
+}
 
-      <div className="mt-6 p-6 border border-purple-500 rounded-lg bg-gray-900">
-        <h3 className="text-2xl font-bold text-purple-400">🔥 Viral Package</h3>
+function DownloadButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="px-4 py-2 rounded-lg bg-[#1a1d2e] hover:bg-[#1e2235] text-sm font-medium text-white border border-[#2a2d3e] transition-colors"
+    >
+      {label}
+    </button>
+  );
+}
 
-        <div className="mt-4">
-          <p>
-            <strong>Title:</strong>
-          </p>
-          <p className="mt-2">{result.title}</p>
-          <button
-            onClick={() =>
-              copyToClipboard(result.title || "", "Title Copied")
-            }
-            className="mt-2 bg-yellow-600 px-4 py-2 rounded"
-          >
-            📋 Copy Title
-          </button>
-        </div>
+export function ResultPanel({ result }: ResultPanelProps) {
+  if (!result) return null;
 
-        <div className="mt-6">
-          <p>
-            <strong>Description:</strong>
-          </p>
-          <p className="mt-2">{result.description}</p>
-          <button
-            onClick={() =>
-              copyToClipboard(
-                result.description || "",
-                "Description Copied"
-              )
-            }
-            className="mt-2 bg-green-600 px-4 py-2 rounded"
-          >
-            📋 Copy Description
-          </button>
-          <button
-            onClick={handleDownloadResultJson}
-            className="mt-4 w-full bg-orange-600 hover:bg-orange-700 text-white p-3 rounded-lg font-semibold"
-          >
-            📄 Download Results JSON
-          </button>
-        </div>
+  const hasReel = !!result.final_reel;
+  const hasVertical = !!result.vertical_reel;
+  const hasThumbnail = !!result.thumbnail;
+  const hasResultJson = !!result.result_json;
+  const hasAnyDownload = hasReel || hasVertical || hasThumbnail || hasResultJson;
+  const hasHighlights =
+    result.all_highlights && result.all_highlights.length > 0;
 
-        <div className="mt-6">
-          <p>
-            <strong>Hashtags:</strong>
-          </p>
-          <p className="mt-2">{result.hashtags?.join(" ")}</p>
-          <button
-            onClick={() =>
-              copyToClipboard(
-                result.hashtags?.join(" ") || "",
-                "Hashtags Copied"
-              )
-            }
-            className="mt-2 bg-pink-600 px-4 py-2 rounded"
-          >
-            📋 Copy Hashtags
-          </button>
-        </div>
+  return (
+    <div className="rounded-xl border border-[#1e2030] bg-[#0f1117] overflow-hidden">
+      {/* Header */}
+      <div className="px-6 py-4 border-b border-[#1a1d2e]">
+        <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-widest">
+          Results
+        </h2>
       </div>
 
-      {result.social_exports && (
-        <div className="mt-6 p-6 rounded-lg border border-cyan-500 bg-gray-900">
-          <h3 className="text-2xl font-bold text-cyan-400 mb-4">
-            🚀 Social Media Exports
-          </h3>
-          <div className="grid gap-6 md:grid-cols-3">
-            <div className="p-4 rounded-lg border border-red-500 bg-black">
-              <h4 className="text-xl font-bold text-red-400">📺 YouTube</h4>
-              <textarea
-                readOnly
-                value={result.social_exports?.youtube?.description || ""}
-                className="w-full h-48 mt-3 p-3 rounded bg-gray-950 text-sm"
-              />
-              <button
-                onClick={() =>
-                  copyToClipboard(
-                    result.social_exports?.youtube?.description || "",
-                    "YouTube Copied"
-                  )
-                }
-                className="mt-3 w-full bg-red-600 hover:bg-red-700 p-2 rounded"
-              >
-                Copy YouTube
-              </button>
-            </div>
+      <div className="p-6 space-y-6">
+        {/* Part 4 — Video Embed (only when final_reel exists) */}
+        {hasReel && (
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">
+              Preview
+            </p>
+            <video controls className="w-full max-h-[480px] rounded-lg">
+              <source src={getReelUrl(result.final_reel)} type="video/mp4" />
+            </video>
+          </div>
+        )}
 
-            <div className="p-4 rounded-lg border border-pink-500 bg-black">
-              <h4 className="text-xl font-bold text-pink-400">📸 Instagram</h4>
-              <textarea
-                readOnly
-                value={result.social_exports?.instagram?.caption || ""}
-                className="w-full h-48 mt-3 p-3 rounded bg-gray-950 text-sm"
-              />
-              <button
-                onClick={() =>
-                  copyToClipboard(
-                    result.social_exports?.instagram?.caption || "",
-                    "Instagram Copied"
-                  )
-                }
-                className="mt-3 w-full bg-pink-600 hover:bg-pink-700 p-2 rounded"
-              >
-                Copy Instagram
-              </button>
-            </div>
+        {/* Part 1 — Stats */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <StatCard label="Highlights Found" value={result.highlights_found ?? 0} />
+          {result.stats?.video_duration != null && (
+            <StatCard
+              label="Duration"
+              value={`${result.stats.video_duration}s`}
+            />
+          )}
+          {result.stats?.frames_analyzed != null && (
+            <StatCard
+              label="Frames Analyzed"
+              value={result.stats.frames_analyzed}
+            />
+          )}
+          {result.stats?.processing_time != null && (
+            <StatCard
+              label="Processed In"
+              value={`${result.stats.processing_time}s`}
+            />
+          )}
+        </div>
 
-            <div className="p-4 rounded-lg border border-cyan-500 bg-black">
-              <h4 className="text-xl font-bold text-cyan-400">🎵 TikTok</h4>
-              <textarea
-                readOnly
-                value={result.social_exports?.tiktok?.caption || ""}
-                className="w-full h-48 mt-3 p-3 rounded bg-gray-950 text-sm"
-              />
-              <button
-                onClick={() =>
-                  copyToClipboard(
-                    result.social_exports?.tiktok?.caption || "",
-                    "TikTok Copied"
-                  )
-                }
-                className="mt-3 w-full bg-cyan-600 hover:bg-cyan-700 p-2 rounded"
-              >
-                Copy TikTok
-              </button>
+        {/* Part 2 — Download Buttons (conditional on file existence) */}
+        {hasAnyDownload && (
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">
+              Downloads
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {hasReel && (
+                <DownloadButton
+                  label="Download Reel"
+                  onClick={() => downloadReel(result.final_reel)}
+                />
+              )}
+              {hasVertical && (
+                <DownloadButton
+                  label="Download Vertical Reel"
+                  onClick={() => downloadVerticalReel(result.vertical_reel)}
+                />
+              )}
+              {hasThumbnail && (
+                <DownloadButton
+                  label="Download Thumbnail"
+                  onClick={() => downloadThumbnail(result.thumbnail)}
+                />
+              )}
+              {hasResultJson && (
+                <DownloadButton
+                  label="Download Results JSON"
+                  onClick={() => downloadResultJson(result.result_json)}
+                />
+              )}
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      <div className="mt-6 p-6 border border-cyan-500 rounded-lg bg-gray-900">
-        <h3 className="text-2xl font-bold text-cyan-400">🖼 Best Thumbnail</h3>
-        <button
-          onClick={handleDownloadThumbnail}
-          className="mt-4 w-full bg-cyan-600 hover:bg-cyan-700 text-white p-3 rounded-lg font-semibold"
-        >
-          ⬇ Download Thumbnail
-        </button>
-        <img
-          src={getThumbnailUrl(result.thumbnail)}
-          alt="thumbnail"
-          className="mt-4 rounded-lg max-h-[500px] object-cover mx-auto"
-        />
-      </div>
-
-      {result.all_highlights && result.all_highlights.length > 0 && (
-        <div className="mt-8">
-          <h3 className="text-3xl font-bold text-green-400 mb-6">
-            🎯 Top Highlights Gallery
-          </h3>
-          <div className="grid gap-6 md:grid-cols-2">
-            {result.all_highlights.map((highlight: HighlightItem, index: number) => (
-              <div
-                key={index}
-                className="p-5 rounded-lg border border-green-500 bg-gray-900"
-              >
-                <h4 className="text-xl font-bold text-green-400 mb-3">
-                  Highlight #{index + 1}
-                </h4>
-                <video controls className="w-full rounded-lg">
-                  <source
-                    src={getClipUrl(highlight.clip_path)}
-                    type="video/mp4"
-                  />
-                </video>
-                <div className="mt-4 space-y-2">
-                  <p>
-                    <strong>Timestamp:</strong> {highlight.timestamp} sec
-                  </p>
-                  <p>
-                    <strong>Action:</strong> {highlight.action}
-                  </p>
-                  <p>
-                    <strong>Score:</strong> {(highlight.score * 100).toFixed(2)}%
-                  </p>
-                </div>
+        {/* Part 1 + Part 3 — Title, Description, Hashtags with Copy buttons */}
+        <div className="space-y-3">
+          {result.title && (
+            <div className="rounded-lg bg-[#0a0b0f] border border-[#1a1d2e] p-4">
+              <div className="flex items-center justify-between gap-4 mb-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">
+                  Title
+                </p>
+                <CopyButton text={result.title} label="Copy Title" />
               </div>
-            ))}
-          </div>
+              <p className="text-sm text-white leading-relaxed">{result.title}</p>
+            </div>
+          )}
+
+          {result.description && (
+            <div className="rounded-lg bg-[#0a0b0f] border border-[#1a1d2e] p-4">
+              <div className="flex items-center justify-between gap-4 mb-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">
+                  Description
+                </p>
+                <CopyButton
+                  text={result.description}
+                  label="Copy Description"
+                />
+              </div>
+              <p className="text-sm text-white leading-relaxed whitespace-pre-line">
+                {result.description}
+              </p>
+            </div>
+          )}
+
+          {result.hashtags && result.hashtags.length > 0 && (
+            <div className="rounded-lg bg-[#0a0b0f] border border-[#1a1d2e] p-4">
+              <div className="flex items-center justify-between gap-4 mb-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">
+                  Hashtags
+                </p>
+                <CopyButton
+                  text={result.hashtags.join(" ")}
+                  label="Copy Hashtags"
+                />
+              </div>
+              <p className="text-sm text-blue-400 leading-relaxed">
+                {result.hashtags.join(" ")}
+              </p>
+            </div>
+          )}
         </div>
-      )}
+
+        {/* Highlights Gallery */}
+        {hasHighlights && (
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">
+              Highlight Clips
+            </p>
+            <div className="grid gap-4 md:grid-cols-2">
+              {result.all_highlights!.map(
+                (highlight: HighlightItem, index: number) => (
+                  <div
+                    key={index}
+                    className="rounded-lg bg-[#0a0b0f] border border-[#1a1d2e] p-4"
+                  >
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">
+                      Clip {index + 1}
+                    </p>
+                    {highlight.clip_path && (
+                      <video controls className="w-full max-h-[270px] rounded-md mb-3">
+                        <source
+                          src={getClipUrl(highlight.clip_path)}
+                          type="video/mp4"
+                        />
+                      </video>
+                    )}
+                    <div className="space-y-1 text-sm text-gray-400">
+                      <p>
+                        <span className="text-gray-600">Timestamp</span>{" "}
+                        {highlight.timestamp}s
+                      </p>
+                      {highlight.action && (
+                        <p>
+                          <span className="text-gray-600">Action</span>{" "}
+                          {highlight.action}
+                        </p>
+                      )}
+                      <p>
+                        <span className="text-gray-600">Score</span>{" "}
+                        {(highlight.score * 100).toFixed(1)}%
+                      </p>
+                    </div>
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -40,7 +40,13 @@ export function UploadPanel({
       <button
         onClick={onGenerateHighlights}
         disabled={loading || !selectedFile}
-        className="mt-4 w-full bg-green-600 hover:bg-green-700 text-white p-4 rounded-lg font-semibold disabled:opacity-50"
+        className={`mt-4 w-full bg-green-600 text-white p-4 rounded-lg font-semibold transition-colors ${
+          loading
+            ? "opacity-50 cursor-wait"
+            : !selectedFile
+            ? "opacity-50 cursor-not-allowed"
+            : "hover:bg-green-700 cursor-pointer"
+        }`}
       >
         {loading ? "Generating Highlights..." : "Generate Highlights"}
       </button>

@@ -1,11 +1,57 @@
 "use client";
 
+import { useState, useEffect, useRef } from "react";
+import type { PipelineJob } from "../types/pipeline";
+
 interface ProgressPanelProps {
   loading: boolean;
   progress: number;
   progressStatus: string;
   error?: string | null;
   onClearError?: () => void;
+  currentJobId: string | null;
+  currentJob: PipelineJob | null;
+}
+
+function StatusBadge({ label, cls }: { label: string; cls: string }) {
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${cls}`}>
+      {label}
+    </span>
+  );
+}
+
+// Parse the backend's created_at string to a UTC epoch ms value.
+//
+// Python's datetime.utcnow().isoformat() produces strings like:
+//   "2026-06-30T12:05:55.123456"  — no Z, microseconds (6 dp)
+//
+// JS date-time strings WITHOUT a timezone suffix are treated as LOCAL time
+// by the ECMAScript spec, shifting startMs by the user's UTC offset and
+// making elapsed appear as a clock value (e.g. "05:30:08").
+//
+// Fixes applied here:
+//  1. Space separator → T  (SQLite stores as "2026-06-30 …")
+//  2. Truncate microseconds → milliseconds  (JS only supports 3 dp)
+//  3. Append Z when no tz suffix present  (treat as UTC, not local)
+function parseCreatedAt(raw: string): number {
+  let s = raw.replace(" ", "T");
+  s = s.replace(/(\.\d{3})\d+/, "$1");
+  if (!/Z$|[+-]\d{2}:?\d{2}$/.test(s)) {
+    s += "Z";
+  }
+  const ms = new Date(s).getTime();
+  return isNaN(ms) ? Date.now() : ms;
+}
+
+function formatElapsed(totalSeconds: number): string {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, "0");
+  const s = (totalSeconds % 60).toString().padStart(2, "0");
+  if (h > 0) {
+    return `${h.toString().padStart(2, "0")}:${m}:${s}`;
+  }
+  return `${m}:${s}`;
 }
 
 export function ProgressPanel({
@@ -14,24 +60,60 @@ export function ProgressPanel({
   progressStatus,
   error,
   onClearError,
+  currentJobId,
+  currentJob,
 }: ProgressPanelProps) {
+  const [elapsed, setElapsed] = useState(0);
+  // Pinned once per job — never recalculated on re-render.
+  const startMsRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!loading || !currentJob?.created_at) {
+      startMsRef.current = null;
+      setElapsed(0);
+      return;
+    }
+
+    startMsRef.current = parseCreatedAt(currentJob.created_at);
+
+    const tick = () => {
+      const startMs = startMsRef.current;
+      if (startMs === null) return;
+      const elapsedMs = Date.now() - startMs;
+      const totalSec = Math.max(0, Math.floor(elapsedMs / 1000));
+      setElapsed(totalSec);
+    };
+
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [loading, currentJob?.created_at]);
+
   if (!loading && !error) {
     return null;
   }
 
+  const startedTime = currentJob?.created_at
+    ? new Date(parseCreatedAt(currentJob.created_at)).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      })
+    : null;
+
   return (
-    <>
+    <div className="space-y-4">
       {error && (
-        <div className="w-full max-w-6xl mt-6 border border-red-500 p-6 rounded-lg bg-red-900/20">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <p className="text-red-400 font-semibold text-lg">❌ Processing Failed</p>
-              <p className="mt-3 text-red-200">{error}</p>
+        <div className="rounded-xl border border-red-500/30 bg-red-950/20 p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-red-400 font-semibold text-sm">Processing Failed</p>
+              <p className="mt-1 text-sm text-red-300/70">{error}</p>
             </div>
             {onClearError && (
               <button
                 onClick={onClearError}
-                className="ml-4 bg-red-600 hover:bg-red-700 px-6 py-2 rounded text-white font-semibold whitespace-nowrap"
+                className="shrink-0 px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium"
               >
                 Dismiss
               </button>
@@ -41,34 +123,43 @@ export function ProgressPanel({
       )}
 
       {loading && !error && (
-        <div className="w-full max-w-6xl mt-6 border border-blue-500 p-6 rounded-lg bg-blue-900/10">
-          <div className="mb-4">
-            <div className="flex justify-between items-center mb-2">
-              <div>
-                <p className="text-gray-400 text-sm uppercase tracking-wide">Processing Status</p>
-                <p className="text-xl font-semibold text-blue-400 mt-1">{progressStatus}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-4xl font-bold text-blue-400">{progress}%</p>
-              </div>
-            </div>
-
-            <div className="w-full bg-gray-700 rounded-full h-3 overflow-hidden shadow-lg">
-              <div
-                className="bg-gradient-to-r from-blue-500 to-blue-400 h-3 rounded-full transition-all duration-300 ease-out shadow-[0_0_10px_rgba(59,130,246,0.5)]"
-                style={{
-                  width: `${progress}%`,
-                }}
-              />
-            </div>
+        <div className="rounded-xl border border-[#1e2030] bg-[#0f1117] p-6">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-widest">
+              Current Job
+            </h2>
+            <StatusBadge
+              label="Running"
+              cls="bg-blue-500/15 text-blue-400 border border-blue-500/30"
+            />
           </div>
 
-          <div className="mt-4 flex items-center text-gray-400 text-sm">
-            <div className="w-2 h-2 bg-blue-400 rounded-full mr-2 animate-pulse" />
-            <span>Processing your video...</span>
+          <div className="flex items-end justify-between mb-3">
+            <div>
+              <p className="text-white font-semibold">
+                {progressStatus || "Processing…"}
+              </p>
+            </div>
+            <p className="text-3xl font-bold text-blue-400 tabular-nums">
+              {progress}%
+            </p>
           </div>
+
+          <div className="w-full bg-[#1a1d2e] rounded-full h-2 overflow-hidden">
+            <div
+              className="bg-blue-500 h-2 rounded-full transition-all duration-300 ease-out"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+
+          {startedTime && (
+            <div className="mt-4 flex items-center gap-5 text-xs text-gray-600">
+              <span>Started {startedTime}</span>
+              <span className="font-mono">Elapsed {formatElapsed(elapsed)}</span>
+            </div>
+          )}
         </div>
       )}
-    </>
+    </div>
   );
 }
