@@ -19,6 +19,7 @@ from app.services.caption_service import CaptionService
 from app.services.scene_service import SceneService
 from app.services.audio_service import AudioService
 from app.services.progress_service import ProgressService
+from app.services.job_service import JobService
 
 
 class PipelineService:
@@ -26,17 +27,30 @@ class PipelineService:
     @classmethod
     def process_video(
         cls,
-        video_path: str
+        video_path: str,
+        job_id: str | None = None
     ):
         start_time = time.time()
         ProgressService.update(
             progress=5,
             status="Starting Pipeline"
         )
+        if job_id is not None:
+            JobService.update_job(
+                job_id=job_id,
+                progress=5,
+                message="Starting Pipeline"
+            )
         ProgressService.update(
             progress=10,
             status="Extracting Frames"
         )
+        if job_id is not None:
+            JobService.update_job(
+                job_id=job_id,
+                progress=10,
+                message="Extracting Frames"
+            )
         print(
             "Step 1: Extracting frames..."
         )
@@ -50,6 +64,12 @@ class PipelineService:
             progress=35,
             status="Detecting Highlights"
         )
+        if job_id is not None:
+            JobService.update_job(
+                job_id=job_id,
+                progress=35,
+                message="Detecting Highlights"
+            )
         print(
             "Step 2: Detecting highlights with "
             "CLIP + Motion..."
@@ -412,6 +432,12 @@ class PipelineService:
             progress=70,
             status="Generating Reel"
         )
+        if job_id is not None:
+            JobService.update_job(
+                job_id=job_id,
+                progress=70,
+                message="Generating Reel"
+            )
         print(
             "Step 3: Creating final reel..."
         )
@@ -458,6 +484,12 @@ class PipelineService:
             progress=85,
             status="Transcribing Audio"
         )
+        if job_id is not None:
+            JobService.update_job(
+                job_id=job_id,
+                progress=85,
+                message="Transcribing Audio"
+            )
         print(
             "Step 4: Transcribing audio..."
         )
@@ -479,6 +511,12 @@ class PipelineService:
             progress=95,
             status="Adding Captions"
         )
+        if job_id is not None:
+            JobService.update_job(
+                job_id=job_id,
+                progress=95,
+                message="Adding Captions"
+            )
         print(
             "Step 5: Adding captions..."
         )
@@ -544,7 +582,7 @@ class PipelineService:
         )
 
         print(
-            "Captioned Reel:", 
+            "Captioned Reel:",
             captioned_reel
         )
 
@@ -607,6 +645,12 @@ class PipelineService:
             progress=100,
             status="Completed"
         )
+        if job_id is not None:
+            JobService.update_job(
+                job_id=job_id,
+                progress=100,
+                message="Completed"
+            )
         print(
             "Pipeline completed!"
         )

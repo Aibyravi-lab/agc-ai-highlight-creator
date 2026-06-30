@@ -2,12 +2,8 @@ import threading
 
 from app.services.job_service import JobService
 from app.services.pipeline_service import PipelineService
-from app.services.cleanup_service import (
-    CleanupService
-)
-from app.services.logger_service import (
-    LoggerService
-)
+from app.services.cleanup_service import CleanupService
+from app.services.logger_service import LoggerService
 
 
 class BackgroundJobService:
@@ -49,10 +45,9 @@ class BackgroundJobService:
                 message="Pipeline Started"
             )
 
-            result = (
-                PipelineService.process_video(
-                    video_path
-                )
+            result = PipelineService.process_video(
+                job_id=job_id,
+                video_path=video_path
             )
 
             JobService.complete_job(
