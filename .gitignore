@@ -23,3 +23,7 @@ backend/storage/
 frontend/.next/
 frontend/node_modules/
 logs/*.log
+# Environment files
+.env
+.env.*
+backend/.env
