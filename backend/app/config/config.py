@@ -82,11 +82,6 @@ class Settings(BaseSettings):
         "storage/highlights"
     )
 
-    HISTORY_FILE: str = os.getenv(
-        "HISTORY_FILE",
-        "storage/history.json"
-    )
-
     PROGRESS_FILE: str = os.getenv(
         "PROGRESS_FILE",
         "storage/progress.json"

@@ -1,7 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 
 from app.services.pipeline_service import PipelineService
-from app.services.progress_service import ProgressService
 from app.services.job_service import JobService
 from app.services.background_job_service import (
     BackgroundJobService
@@ -16,12 +15,16 @@ router = APIRouter(
 
 
 @router.post("/process")
-def process_video(video_path: str):
+def process_video(
+    video_path: str,
+    current_user: dict = Depends(get_current_user)
+):
 
     try:
 
         result = PipelineService.process_video(
-            video_path
+            video_path,
+            user_id=current_user["id"]
         )
 
         return {
@@ -45,13 +48,18 @@ def start_video_processing(
 
     try:
 
+        user_id = current_user["id"]
+
         job_id = (
-            JobService.create_job()
+            JobService.create_job(
+                user_id=user_id
+            )
         )
 
         BackgroundJobService.start_job(
             job_id=job_id,
-            video_path=video_path
+            video_path=video_path,
+            user_id=user_id
         )
 
         return {
@@ -78,7 +86,9 @@ def get_all_jobs(
     current_user: dict = Depends(get_current_user)
 ):
 
-    jobs = JobService.get_all_jobs()
+    jobs = JobService.get_all_jobs(
+        user_id=current_user["id"]
+    )
 
     return {
 
@@ -110,6 +120,13 @@ def get_job_status(
             detail="Job not found"
         )
 
+    if job.get("user_id") != current_user["id"]:
+
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden"
+        )
+
     return {
 
         "success": True,
@@ -129,7 +146,9 @@ def get_job_stats(
         "success": True,
 
         "data":
-        JobService.get_job_stats()
+        JobService.get_job_stats(
+            user_id=current_user["id"]
+        )
 
     }
 
@@ -141,5 +160,7 @@ def get_progress(
 
     return {
         "success": True,
-        "data": ProgressService.get_progress()
+        "data": JobService.get_user_active_progress(
+            user_id=current_user["id"]
+        )
     }

@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from app.services.frame_service import FrameService
+from app.dependencies import get_current_user
 
 
 router = APIRouter(
@@ -9,7 +10,10 @@ router = APIRouter(
 
 
 @router.post("/extract")
-def extract_frames(video_path: str):
+def extract_frames(
+    video_path: str,
+    current_user: dict = Depends(get_current_user)
+):
     try:
         result = FrameService.extract_frames(video_path)
 

@@ -32,6 +32,8 @@ class DatabaseService:
 
                 job_id TEXT PRIMARY KEY,
 
+                user_id INTEGER,
+
                 status TEXT,
 
                 progress INTEGER,
@@ -52,6 +54,16 @@ class DatabaseService:
             """
         )
 
+        # Migration: add user_id to existing jobs tables that predate this column
+        try:
+            cursor.execute(
+                "ALTER TABLE jobs ADD COLUMN user_id INTEGER"
+            )
+            connection.commit()
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc).lower():
+                raise
+
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
@@ -71,6 +83,36 @@ class DatabaseService:
             )
             """
         )
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS history (
+
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                user_id INTEGER NOT NULL,
+
+                video_name TEXT,
+
+                date TEXT,
+
+                reel_path TEXT,
+
+                highlights_count INTEGER
+
+            )
+            """
+        )
+
+        # Migration: add user_id to existing history tables that predate this column
+        try:
+            cursor.execute(
+                "ALTER TABLE history ADD COLUMN user_id INTEGER"
+            )
+            connection.commit()
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc).lower():
+                raise
 
         connection.commit()
 

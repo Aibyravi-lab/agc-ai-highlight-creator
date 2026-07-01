@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from app.services.vision_service import VisionService
+from app.dependencies import get_current_user
 
 
 router = APIRouter(
@@ -9,7 +10,10 @@ router = APIRouter(
 
 
 @router.post("/analyze")
-def analyze_frame(image_path: str):
+def analyze_frame(
+    image_path: str,
+    current_user: dict = Depends(get_current_user)
+):
 
     try:
         result = VisionService.analyze_frame(image_path)

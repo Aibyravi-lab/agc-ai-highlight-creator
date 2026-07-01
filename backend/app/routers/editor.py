@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from app.services.video_editor_service import VideoEditorService
+from app.dependencies import get_current_user
 
 
 router = APIRouter(
@@ -12,7 +13,8 @@ router = APIRouter(
 def create_clip(
     video_path: str,
     timestamp: int,
-    duration: int = 5
+    duration: int = 5,
+    current_user: dict = Depends(get_current_user)
 ):
 
     try:

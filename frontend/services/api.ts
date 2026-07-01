@@ -203,16 +203,29 @@ export function getResultJsonUrl(resultJsonPath: string | undefined): string {
 }
 
 /**
- * Download functions — fetch as blob so the browser saves the file
- * instead of opening it in a new tab.
+ * Download functions — fetch via the authenticated /files/ endpoint so the
+ * server can verify ownership before serving.  Signatures are unchanged so
+ * callers need no updates.
  */
 
-function filenameFromUrl(url: string): string {
-  return decodeURIComponent(url.split("/").pop() || "download");
+function filenameFromPath(path: string): string {
+  return decodeURIComponent(path.split(/[\\/]/).pop() || "download");
 }
 
-async function blobDownload(url: string, filename: string): Promise<void> {
-  const response = await fetch(url);
+async function authedBlobDownload(
+  relativePath: string,
+  filename: string
+): Promise<void> {
+  const normalized = normalizePathToUrl(relativePath);
+  const response = await fetch(`${API_BASE}/files/${normalized}`, {
+    headers: authHeaders(),
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error(
+      response.status === 403 ? "Access denied" : "Download failed"
+    );
+  }
   const blob = await response.blob();
   const objectUrl = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -225,31 +238,26 @@ async function blobDownload(url: string, filename: string): Promise<void> {
 }
 
 export async function downloadReel(reelPath: string | undefined): Promise<void> {
-  const url = getReelUrl(reelPath);
-  if (!url) return;
-  await blobDownload(url, filenameFromUrl(url));
+  if (!reelPath) return;
+  await authedBlobDownload(reelPath, filenameFromPath(reelPath));
 }
 
 export async function downloadVerticalReel(verticalPath: string | undefined): Promise<void> {
-  const url = getVerticalReelUrl(verticalPath);
-  if (!url) return;
-  await blobDownload(url, filenameFromUrl(url));
+  if (!verticalPath) return;
+  await authedBlobDownload(verticalPath, filenameFromPath(verticalPath));
 }
 
 export async function downloadThumbnail(thumbnailPath: string | undefined): Promise<void> {
-  const url = getThumbnailUrl(thumbnailPath);
-  if (!url) return;
-  await blobDownload(url, filenameFromUrl(url));
+  if (!thumbnailPath) return;
+  await authedBlobDownload(thumbnailPath, filenameFromPath(thumbnailPath));
 }
 
 export async function downloadResultJson(resultJsonPath: string | undefined): Promise<void> {
-  const url = getResultJsonUrl(resultJsonPath);
-  if (!url) return;
-  await blobDownload(url, filenameFromUrl(url));
+  if (!resultJsonPath) return;
+  await authedBlobDownload(resultJsonPath, filenameFromPath(resultJsonPath));
 }
 
 export async function downloadClip(clipPath: string | undefined): Promise<void> {
-  const url = getClipUrl(clipPath);
-  if (!url) return;
-  await blobDownload(url, filenameFromUrl(url));
+  if (!clipPath) return;
+  await authedBlobDownload(clipPath, filenameFromPath(clipPath));
 }

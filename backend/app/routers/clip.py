@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from app.services.clip_service import ClipService
+from app.dependencies import get_current_user
 
 
 router = APIRouter(
@@ -9,7 +10,10 @@ router = APIRouter(
 
 
 @router.post("/highlight-check")
-def check_highlight(image_path: str):
+def check_highlight(
+    image_path: str,
+    current_user: dict = Depends(get_current_user)
+):
 
     try:
         result = ClipService.get_highlight_result(
@@ -29,7 +33,10 @@ def check_highlight(image_path: str):
 
 
 @router.post("/analyze")
-def analyze_image(image_path: str):
+def analyze_image(
+    image_path: str,
+    current_user: dict = Depends(get_current_user)
+):
 
     try:
         result = ClipService.analyze_frame(

@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pathlib import Path
 
 from app.services.video_service import get_video_metadata
+from app.dependencies import get_current_user
 
 
 router = APIRouter(
@@ -14,12 +15,19 @@ UPLOAD_FOLDER = "uploads"
 
 
 @router.get("/{filename}")
-def analyze_video(filename: str):
-    """
-    Analyze uploaded video and return metadata
-    """
+def analyze_video(
+    filename: str,
+    current_user: dict = Depends(get_current_user)
+):
 
-    file_path = Path(UPLOAD_FOLDER) / filename
+    upload_dir = Path(UPLOAD_FOLDER).resolve()
+    file_path = (upload_dir / filename).resolve()
+
+    if not str(file_path).startswith(str(upload_dir)):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid filename"
+        )
 
     try:
         metadata = get_video_metadata(str(file_path))

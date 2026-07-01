@@ -28,7 +28,8 @@ class PipelineService:
     def process_video(
         cls,
         video_path: str,
-        job_id: str | None = None
+        job_id: str | None = None,
+        user_id: int | None = None
     ):
         start_time = time.time()
         ProgressService.update(
@@ -625,18 +626,21 @@ class PipelineService:
             "result_json"
         ] = result_json
 
-        HistoryService.add_history(
-            video_name=
-            Path(video_path).name,
+        if user_id is not None:
+            HistoryService.add_history(
+                video_name=
+                Path(video_path).name,
 
-            reel_path=
-            final_reel[
-                "final_video"
-            ],
+                reel_path=
+                final_reel[
+                    "final_video"
+                ],
 
-            highlights_count=
-            len(top_highlights)
-        )
+                highlights_count=
+                len(top_highlights),
+
+                user_id=user_id
+            )
 
         metadata[
             "history_saved"

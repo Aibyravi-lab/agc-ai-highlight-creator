@@ -12,14 +12,16 @@ class BackgroundJobService:
     def start_job(
         cls,
         job_id: str,
-        video_path: str
+        video_path: str,
+        user_id: int
     ):
 
         worker = threading.Thread(
             target=cls.run_pipeline,
             args=(
                 job_id,
-                video_path
+                video_path,
+                user_id
             ),
             daemon=True
         )
@@ -30,7 +32,8 @@ class BackgroundJobService:
     def run_pipeline(
         cls,
         job_id: str,
-        video_path: str
+        video_path: str,
+        user_id: int
     ):
 
         try:
@@ -47,7 +50,8 @@ class BackgroundJobService:
 
             result = PipelineService.process_video(
                 job_id=job_id,
-                video_path=video_path
+                video_path=video_path,
+                user_id=user_id
             )
 
             JobService.complete_job(

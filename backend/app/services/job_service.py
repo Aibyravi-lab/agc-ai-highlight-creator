@@ -12,7 +12,8 @@ class JobService:
 
     @classmethod
     def create_job(
-        cls
+        cls,
+        user_id: int
     ):
 
         job_id = str(
@@ -34,6 +35,7 @@ class JobService:
             """
             INSERT INTO jobs (
                 job_id,
+                user_id,
                 status,
                 progress,
                 message,
@@ -44,11 +46,12 @@ class JobService:
                 completed_at
             )
             VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
             )
             """,
             (
                 job_id,
+                user_id,
                 "pending",
                 0,
                 "Job Created",
@@ -118,7 +121,8 @@ class JobService:
 
     @classmethod
     def get_all_jobs(
-        cls
+        cls,
+        user_id: int
     ):
 
         connection = (
@@ -140,8 +144,10 @@ class JobService:
             """
             SELECT *
             FROM jobs
+            WHERE user_id = ?
             ORDER BY created_at DESC
-            """
+            """,
+            (user_id,)
         )
 
         jobs = cursor.fetchall()
@@ -298,7 +304,8 @@ class JobService:
 
     @classmethod
     def get_job_stats(
-        cls
+        cls,
+        user_id: int
     ):
 
         connection = (
@@ -345,7 +352,9 @@ class JobService:
                 ) as failed_jobs
 
             FROM jobs
-            """
+            WHERE user_id = ?
+            """,
+            (user_id,)
         )
 
         row = cursor.fetchone()
@@ -370,3 +379,125 @@ class JobService:
             row[4] or 0
 
         }
+
+    @classmethod
+    def get_user_active_progress(
+        cls,
+        user_id: int
+    ) -> dict:
+
+        connection = (
+            DatabaseService.get_connection()
+        )
+
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            SELECT progress, message
+            FROM jobs
+            WHERE user_id = ?
+              AND status = 'processing'
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (user_id,)
+        )
+
+        row = cursor.fetchone()
+
+        connection.close()
+
+        if row:
+            return {
+                "progress": row[0] or 0,
+                "status": row[1] or ""
+            }
+
+        return {
+            "progress": 0,
+            "status": ""
+        }
+
+    @classmethod
+    def user_owns_file(
+        cls,
+        user_id: int,
+        file_path: str
+    ) -> bool:
+
+        normalized = file_path.replace("\\", "/")
+
+        connection = (
+            DatabaseService.get_connection()
+        )
+
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            SELECT result
+            FROM jobs
+            WHERE user_id = ?
+              AND result IS NOT NULL
+            """,
+            (user_id,)
+        )
+
+        rows = cursor.fetchall()
+
+        connection.close()
+
+        for row in rows:
+
+            try:
+
+                result = json.loads(row[0])
+
+                paths = cls._collect_result_paths(
+                    result
+                )
+
+                if normalized in paths:
+                    return True
+
+            except Exception:
+                pass
+
+        return False
+
+    @classmethod
+    def _collect_result_paths(
+        cls,
+        result: dict
+    ) -> set:
+
+        paths: set = set()
+
+        for key in (
+            "final_reel",
+            "vertical_video",
+            "thumbnail",
+            "result_json",
+            "captioned_reel"
+        ):
+            value = result.get(key)
+            if value and isinstance(value, str):
+                paths.add(
+                    value.replace("\\", "/")
+                )
+
+        for highlight in (
+            result.get("all_highlights") or []
+        ):
+            for key in (
+                "clip_path",
+                "thumbnail_path"
+            ):
+                value = highlight.get(key)
+                if value and isinstance(value, str):
+                    paths.add(
+                        value.replace("\\", "/")
+                    )
+
+        return paths

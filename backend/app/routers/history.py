@@ -16,8 +16,15 @@ def get_history(
     current_user: dict = Depends(get_current_user)
 ):
 
+    print(
+        f"\n[HISTORY DEBUG] Current user: "
+        f"{current_user['id']}"
+    )
+
     history = (
-        HistoryService.get_history()
+        HistoryService.get_history(
+            user_id=current_user["id"]
+        )
     )
 
     return {
