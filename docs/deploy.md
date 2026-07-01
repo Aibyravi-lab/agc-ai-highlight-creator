@@ -5,6 +5,33 @@ Domain: `highlightai.in` (frontend) · `api.highlightai.in` (backend API)
 
 ---
 
+## 0 — Server Prerequisites
+
+Install system packages on the VPS before any application setup:
+
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y python3 python3-pip python3-venv git ffmpeg
+```
+
+Install Node.js 18+ via NodeSource:
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt install -y nodejs
+```
+
+Verify:
+
+```bash
+python3 --version    # 3.10+
+node --version       # 18+
+ffmpeg -version
+ffprobe -version
+```
+
+---
+
 ## 1 — DNS
 
 Add the following A records in your DNS provider (TTL 300):
@@ -120,6 +147,16 @@ JWT_EXPIRY_HOURS=24
 FRONTEND_URL=https://highlightai.in
 PRODUCTION_URL=https://highlightai.in
 WWW_PRODUCTION_URL=https://www.highlightai.in
+```
+
+### Create the virtual environment and install dependencies
+
+```bash
+cd /path/to/AGC_AI_Highlight_Creator/backend
+python3 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
 ```
 
 ### Start the backend

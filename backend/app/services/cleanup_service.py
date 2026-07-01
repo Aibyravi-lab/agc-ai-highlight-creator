@@ -99,6 +99,104 @@ class CleanupService:
                     )
 
     @staticmethod
+    def cleanup_temp_file(
+        file_path: str
+    ):
+
+        path = Path(file_path)
+
+        if not path.exists() or not path.is_file():
+            return
+
+        try:
+
+            path.unlink()
+
+            LoggerService.info(
+                f"Cleaned up temp file: {path}"
+            )
+
+        except Exception as error:
+
+            LoggerService.error(
+                f"Temp file cleanup failed: {error}"
+            )
+
+    @staticmethod
+    def cleanup_temp_folder(
+        folder_path: str
+    ):
+
+        path = Path(folder_path)
+
+        if not path.exists() or not path.is_dir():
+            return
+
+        try:
+
+            shutil.rmtree(path)
+
+            LoggerService.info(
+                f"Cleaned up temp folder: {path}"
+            )
+
+        except Exception as error:
+
+            LoggerService.error(
+                f"Temp folder cleanup failed: {error}"
+            )
+
+    @staticmethod
+    def cleanup_old_temp_folders():
+
+        cutoff = (
+            datetime.now()
+            - timedelta(
+                hours=settings.TEMP_CLEANUP_HOURS
+            )
+        )
+
+        scan_dirs = [
+            Path(settings.FRAME_FOLDER),
+            Path(settings.THUMBNAIL_FOLDER),
+            Path(settings.UPLOAD_FOLDER),
+        ]
+
+        for scan_dir in scan_dirs:
+
+            if not scan_dir.exists():
+                continue
+
+            for item in scan_dir.iterdir():
+
+                modified = datetime.fromtimestamp(
+                    item.stat().st_mtime
+                )
+
+                if modified >= cutoff:
+                    continue
+
+                try:
+
+                    if item.is_dir():
+
+                        shutil.rmtree(item)
+
+                    else:
+
+                        item.unlink()
+
+                    LoggerService.info(
+                        f"Deleted old temp item: {item}"
+                    )
+
+                except Exception as error:
+
+                    LoggerService.error(
+                        f"Old temp cleanup failed: {error}"
+                    )
+
+    @staticmethod
     def cleanup_thumbnails():
 
         thumbnails_dir = Path(

@@ -75,6 +75,9 @@ async def security_headers_middleware(
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = (
+        "camera=(), microphone=(), geolocation=()"
+    )
     if settings.HTTPS_ENABLED:
         response.headers["Strict-Transport-Security"] = (
             "max-age=31536000; includeSubDomains"

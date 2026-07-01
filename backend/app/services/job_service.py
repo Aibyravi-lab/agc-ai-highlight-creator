@@ -467,6 +467,34 @@ class JobService:
         return False
 
     @classmethod
+    def get_running_job_count(
+        cls,
+        user_id: int
+    ) -> int:
+
+        connection = (
+            DatabaseService.get_connection()
+        )
+
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM jobs
+            WHERE user_id = ?
+              AND status IN ('pending', 'processing')
+            """,
+            (user_id,)
+        )
+
+        row = cursor.fetchone()
+
+        connection.close()
+
+        return row[0] if row else 0
+
+    @classmethod
     def _collect_result_paths(
         cls,
         result: dict

@@ -49,19 +49,6 @@ class HistoryService:
         user_id: int
     ):
 
-        SQL = (
-            "SELECT video_name, date, reel_path, highlights_count"
-            " FROM history WHERE user_id = ?"
-            " ORDER BY date DESC"
-        )
-
-        print(
-            f"\n[HISTORY DEBUG] SQL:\n  {SQL}"
-        )
-        print(
-            f"[HISTORY DEBUG] Parameters: [{user_id}]"
-        )
-
         connection = DatabaseService.get_connection()
 
         connection.row_factory = (
@@ -75,36 +62,14 @@ class HistoryService:
 
         cursor = connection.cursor()
 
-        # Scan all rows first so we can verify user_id population
-        raw_cursor = connection.cursor()
-        raw_cursor.execute(
-            """
-            SELECT id, user_id, video_name
-            FROM history
-            ORDER BY id DESC
-            """
+        cursor.execute(
+            "SELECT video_name, date, reel_path, highlights_count"
+            " FROM history WHERE user_id = ?"
+            " ORDER BY date DESC",
+            (user_id,)
         )
-        all_rows = raw_cursor.fetchall()
-        print(
-            f"[HISTORY DEBUG] All rows in history table "
-            f"(id, user_id, video_name):"
-        )
-        for row in all_rows:
-            print(f"  {row}")
-        if not all_rows:
-            print("  (empty table)")
-
-        cursor.execute(SQL, (user_id,))
 
         history = cursor.fetchall()
-
-        print(
-            f"[HISTORY DEBUG] Returned rows: {len(history)}"
-        )
-        if history:
-            print(
-                f"[HISTORY DEBUG] First row: {history[0]}"
-            )
 
         connection.close()
 

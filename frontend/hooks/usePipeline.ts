@@ -93,14 +93,9 @@ export function usePipeline() {
         const response = await getJob(jobId);
         const job = response.data;
 
-        // Log raw getJob() return before any setState
-        console.log("[AGC] getJob() response:", JSON.stringify(response));
-        console.log("[AGC] job fields:", { status: job?.status, message: job?.message, progress: job?.progress });
-
         if (job.status === "completed") {
           stopPolling();
           setState((prev) => {
-            console.log("[AGC][setState] source=completion", { prevProgressStatus: prev.progressStatus, nextProgressStatus: "Completed", jobStatus: job.status, jobMessage: job.message });
             return { ...prev, result: job.result ?? null, loading: false, progress: 100, progressStatus: "Completed", currentJobId: null, selectedFile: null, successMessage: "Highlights generated successfully!", fileInputKey: prev.fileInputKey + 1 };
           });
           // Refresh all dashboard sections immediately after completion
@@ -116,13 +111,11 @@ export function usePipeline() {
         } else if (job.status === "failed") {
           stopPolling();
           setState((prev) => {
-            console.log("[AGC][setState] source=failure (no progressStatus change)", { prevProgressStatus: prev.progressStatus, jobStatus: job.status, jobMessage: job.message });
             return { ...prev, loading: false, error: job.error || "Processing failed", currentJobId: null };
           });
         } else {
           setState((prev) => {
             const nextProgressStatus = job.message || job.status;
-            console.log("[AGC][setState] source=poll", { prevProgressStatus: prev.progressStatus, nextProgressStatus, jobStatus: job.status, jobMessage: job.message });
             return { ...prev, progress: Math.max(prev.progress, job.progress ?? 0), progressStatus: nextProgressStatus };
           });
         }
@@ -147,7 +140,7 @@ export function usePipeline() {
         return;
       }
 
-      const SUPPORTED_EXTENSIONS = [".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".wmv"];
+      const SUPPORTED_EXTENSIONS = [".mp4", ".mov", ".avi", ".mkv", ".webm"];
       const dotIndex = file.name.lastIndexOf(".");
       const ext = dotIndex === -1 ? "" : file.name.slice(dotIndex).toLowerCase();
       if (!SUPPORTED_EXTENSIONS.includes(ext)) {
@@ -159,7 +152,6 @@ export function usePipeline() {
       }
 
       setState((prev) => {
-        console.log("[AGC][setState] source=upload", { prevProgressStatus: prev.progressStatus, nextProgressStatus: "Uploading...", jobStatus: undefined, jobMessage: undefined });
         return { ...prev, loading: true, error: null, result: null, progress: 0, progressStatus: "Uploading...", successMessage: null };
       });
 
@@ -171,7 +163,6 @@ export function usePipeline() {
         }
 
         setState((prev) => {
-          console.log("[AGC][setState] source=start", { prevProgressStatus: prev.progressStatus, nextProgressStatus: "Starting pipeline...", jobStatus: undefined, jobMessage: undefined });
           return { ...prev, progressStatus: "Starting pipeline...", progress: 10 };
         });
 
@@ -184,7 +175,6 @@ export function usePipeline() {
         const jobId = startResponse.job_id;
 
         setState((prev) => {
-          console.log("[AGC][setState] source=start-job-id", { prevProgressStatus: prev.progressStatus, nextProgressStatus: "Processing...", jobStatus: undefined, jobMessage: undefined });
           return { ...prev, currentJobId: jobId, progressStatus: "Processing...", progress: 20 };
         });
       } catch (err) {
@@ -249,7 +239,6 @@ export function usePipeline() {
       const response = await getProgress();
       setState((prev) => {
         const nextProgressStatus = response.data?.status || "";
-        console.log("[AGC][setState] source=loadProgress", { prevProgressStatus: prev.progressStatus, nextProgressStatus, jobStatus: undefined, jobMessage: undefined, currentJobIdRef: currentJobIdRef.current });
         return { ...prev, progress: Math.max(prev.progress, response.data?.progress ?? 0), progressStatus: nextProgressStatus };
       });
     } catch (err) {

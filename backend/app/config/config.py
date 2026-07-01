@@ -29,7 +29,7 @@ class Settings(BaseSettings):
 
     APP_VERSION: str = os.getenv(
         "APP_VERSION",
-        "0.0.17"
+        "0.4.0-beta"
     )
 
     FRONTEND_URL: str = os.getenv(
@@ -96,6 +96,34 @@ class Settings(BaseSettings):
         os.getenv(
             "MAX_UPLOAD_SIZE",
             "524288000"
+        )
+    )
+
+    MAX_UPLOAD_SIZE_MB: int = int(
+        os.getenv(
+            "MAX_UPLOAD_SIZE_MB",
+            "500"
+        )
+    )
+
+    MAX_CONCURRENT_JOBS_PER_USER: int = int(
+        os.getenv(
+            "MAX_CONCURRENT_JOBS_PER_USER",
+            "2"
+        )
+    )
+
+    TEMP_CLEANUP_HOURS: int = int(
+        os.getenv(
+            "TEMP_CLEANUP_HOURS",
+            "24"
+        )
+    )
+
+    DUPLICATE_UPLOAD_WINDOW_MINUTES: int = int(
+        os.getenv(
+            "DUPLICATE_UPLOAD_WINDOW_MINUTES",
+            "10"
         )
     )
 

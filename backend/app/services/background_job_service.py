@@ -59,8 +59,6 @@ class BackgroundJobService:
                 result=result
             )
 
-            CleanupService.cleanup()
-
             LoggerService.info(
                 f"Job Completed: {job_id}"
             )
@@ -75,3 +73,11 @@ class BackgroundJobService:
                 job_id=job_id,
                 error=str(error)
             )
+
+        finally:
+
+            CleanupService.cleanup_temp_file(
+                video_path
+            )
+
+            CleanupService.cleanup()

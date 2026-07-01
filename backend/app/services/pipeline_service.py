@@ -1,6 +1,7 @@
 import time
 from pathlib import Path
 from app.services.stats_service import StatsService
+from app.services.cleanup_service import CleanupService
 from app.services.result_export_service import ResultExportService
 from app.services.history_service import HistoryService
 from app.services.frame_service import FrameService
@@ -68,6 +69,37 @@ class PipelineService:
                 video_path
             )
         )
+
+        frames_folder = (
+            frames_data["frame_location"]
+        )
+
+        try:
+
+            return cls._run_pipeline(
+                video_path=video_path,
+                job_id=job_id,
+                user_id=user_id,
+                frames_data=frames_data,
+                start_time=start_time
+            )
+
+        finally:
+
+            CleanupService.cleanup_temp_folder(
+                frames_folder
+            )
+
+    @classmethod
+    def _run_pipeline(
+        cls,
+        video_path: str,
+        job_id: str | None,
+        user_id: int | None,
+        frames_data: dict,
+        start_time: float
+    ):
+
         ProgressService.update(
             progress=35,
             status="Detecting Highlights"

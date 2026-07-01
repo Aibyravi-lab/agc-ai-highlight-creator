@@ -5,6 +5,7 @@ from app.services.job_service import JobService
 from app.services.background_job_service import (
     BackgroundJobService
 )
+from app.config.config import settings
 from app.dependencies import get_current_user
 
 
@@ -12,6 +13,10 @@ router = APIRouter(
     prefix="/pipeline",
     tags=["AI Pipeline"]
 )
+
+
+class PipelineError:
+    MAX_CONCURRENT_JOBS = "MAX_CONCURRENT_JOBS"
 
 
 @router.post("/process")
@@ -46,9 +51,28 @@ def start_video_processing(
     current_user: dict = Depends(get_current_user)
 ):
 
-    try:
+    user_id = current_user["id"]
 
-        user_id = current_user["id"]
+    running = (
+        JobService.get_running_job_count(
+            user_id=user_id
+        )
+    )
+
+    if running >= settings.MAX_CONCURRENT_JOBS_PER_USER:
+
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "code": PipelineError.MAX_CONCURRENT_JOBS,
+                "message": (
+                    "Maximum concurrent jobs reached. "
+                    "Please wait for an existing job to finish."
+                )
+            }
+        )
+
+    try:
 
         job_id = (
             JobService.create_job(
