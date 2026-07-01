@@ -23,6 +23,10 @@ backend/storage/
 frontend/.next/
 frontend/node_modules/
 logs/*.log
+# Benchmark results (runtime artifacts)
+benchmark/results/*
+!benchmark/results/.gitkeep
+
 # Environment files
 .env
 .env.*

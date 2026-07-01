@@ -116,5 +116,17 @@ class Settings(BaseSettings):
         )
     )
 
+    ENVIRONMENT: str = os.getenv(
+        "ENVIRONMENT",
+        "development"
+    )
+
+    HTTPS_ENABLED: bool = (
+        os.getenv(
+            "HTTPS_ENABLED",
+            "false"
+        ).lower() == "true"
+    )
+
 
 settings = Settings()

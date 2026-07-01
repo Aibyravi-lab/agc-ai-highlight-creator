@@ -29,6 +29,8 @@ interface PipelineState {
   jobStats: JobStats | null;
   error: string | null;
   currentJobId: string | null;
+  successMessage: string | null;
+  fileInputKey: number;
 }
 
 export function usePipeline() {
@@ -43,6 +45,8 @@ export function usePipeline() {
     jobStats: null,
     error: null,
     currentJobId: null,
+    successMessage: null,
+    fileInputKey: 0,
   });
 
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -97,17 +101,18 @@ export function usePipeline() {
           stopPolling();
           setState((prev) => {
             console.log("[AGC][setState] source=completion", { prevProgressStatus: prev.progressStatus, nextProgressStatus: "Completed", jobStatus: job.status, jobMessage: job.message });
-            return { ...prev, result: job.result ?? null, loading: false, progress: 100, progressStatus: "Completed", currentJobId: null };
+            return { ...prev, result: job.result ?? null, loading: false, progress: 100, progressStatus: "Completed", currentJobId: null, selectedFile: null, successMessage: "Highlights generated successfully!", fileInputKey: prev.fileInputKey + 1 };
           });
-          try {
-            const historyResponse = await getHistory();
-            setState((prev) => ({
-              ...prev,
-              history: historyResponse.data || [],
-            }));
-          } catch (err) {
-            console.error("History load failed:", err);
-          }
+          // Refresh all dashboard sections immediately after completion
+          getHistory()
+            .then((res) => setState((prev) => ({ ...prev, history: res.data || [] })))
+            .catch((err) => console.error("History refresh failed:", err));
+          getJobs()
+            .then((res) => setState((prev) => ({ ...prev, allJobs: res.data || [] })))
+            .catch((err) => console.error("Jobs refresh failed:", err));
+          getJobStats()
+            .then((res) => setState((prev) => ({ ...prev, jobStats: res.data || null })))
+            .catch((err) => console.error("Stats refresh failed:", err));
         } else if (job.status === "failed") {
           stopPolling();
           setState((prev) => {
@@ -142,9 +147,20 @@ export function usePipeline() {
         return;
       }
 
+      const SUPPORTED_EXTENSIONS = [".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".wmv"];
+      const dotIndex = file.name.lastIndexOf(".");
+      const ext = dotIndex === -1 ? "" : file.name.slice(dotIndex).toLowerCase();
+      if (!SUPPORTED_EXTENSIONS.includes(ext)) {
+        setState((prev) => ({
+          ...prev,
+          error: `Unsupported file type${ext ? ` "${ext}"` : ""}. Please upload a video file (MP4, MOV, AVI, MKV, WebM).`,
+        }));
+        return;
+      }
+
       setState((prev) => {
         console.log("[AGC][setState] source=upload", { prevProgressStatus: prev.progressStatus, nextProgressStatus: "Uploading...", jobStatus: undefined, jobMessage: undefined });
-        return { ...prev, loading: true, error: null, result: null, progress: 0, progressStatus: "Uploading..." };
+        return { ...prev, loading: true, error: null, result: null, progress: 0, progressStatus: "Uploading...", successMessage: null };
       });
 
       try {
@@ -267,6 +283,10 @@ export function usePipeline() {
     setState((prev) => ({ ...prev, error: null }));
   }, []);
 
+  const clearSuccessMessage = useCallback(() => {
+    setState((prev) => ({ ...prev, successMessage: null }));
+  }, []);
+
   return {
     // State
     selectedFile: state.selectedFile,
@@ -279,6 +299,8 @@ export function usePipeline() {
     jobStats: state.jobStats,
     error: state.error,
     currentJobId: state.currentJobId,
+    successMessage: state.successMessage,
+    fileInputKey: state.fileInputKey,
 
     // Actions
     setSelectedFile,
@@ -289,6 +311,7 @@ export function usePipeline() {
     loadProgress,
     clearResult,
     clearError,
+    clearSuccessMessage,
     stopPolling,
   };
 }

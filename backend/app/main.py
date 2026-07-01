@@ -1,6 +1,9 @@
-from fastapi import FastAPI
+import uuid
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import Response
 from dotenv import load_dotenv
 
 from app.config.config import settings
@@ -22,6 +25,8 @@ from app.routers.history import (
 )
 from app.routers.auth import router as auth_router
 from app.routers.files import router as files_router
+from app.routers.projects import router as projects_router
+from app.routers.observability import router as observability_router
 
 load_dotenv()
 
@@ -39,6 +44,17 @@ LoggerService.info(
     "AGC Startup Validation Passed"
 )
 
+if (
+    settings.ENVIRONMENT == "production"
+    and not settings.HTTPS_ENABLED
+):
+    print(
+        "⚠️  WARNING: ENVIRONMENT=production but HTTPS_ENABLED is not set."
+    )
+    print(
+        "⚠️  Set HTTPS_ENABLED=true in .env and configure nginx TLS before public release."
+    )
+
 print(
     "✅ Startup Validation Completed"
 )
@@ -48,6 +64,34 @@ app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION
 )
+
+
+@app.middleware("http")
+async def security_headers_middleware(
+    request: Request,
+    call_next
+) -> Response:
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if settings.HTTPS_ENABLED:
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains"
+        )
+    return response
+
+
+@app.middleware("http")
+async def request_id_middleware(
+    request: Request,
+    call_next
+) -> Response:
+    request_id = str(uuid.uuid4())
+    request.state.request_id = request_id
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    return response
 
 
 app.add_middleware(
@@ -65,6 +109,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(observability_router)
 app.include_router(upload_router)
 app.include_router(analysis_router)
 app.include_router(frame_router)
@@ -76,6 +121,7 @@ app.include_router(editor_router)
 app.include_router(history_router)
 app.include_router(auth_router)
 app.include_router(files_router)
+app.include_router(projects_router)
 
 app.mount(
     "/storage",
@@ -99,25 +145,11 @@ def home():
     }
 
 
-@app.get("/health")
-def health():
-
-    return {
-        "status":
-        "Backend Running Successfully"
-    }
-
-
 @app.get("/version")
 def version():
 
     return {
-
         "project": "AGC",
-
         "version": settings.APP_VERSION,
-
-        "status":
-        "Production Readiness Phase"
-
+        "status": "Production Readiness Phase"
     }

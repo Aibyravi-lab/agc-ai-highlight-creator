@@ -1,0 +1,194 @@
+# AGC Production Deployment Guide
+
+Target: single Ubuntu 22.04 VPS at `45.94.209.92`
+Domain: `highlightai.in` (frontend) · `api.highlightai.in` (backend API)
+
+---
+
+## 1 — DNS
+
+Add the following A records in your DNS provider (TTL 300):
+
+| Record | Type | Value |
+|--------|------|-------|
+| `highlightai.in` | A | `45.94.209.92` |
+| `www.highlightai.in` | A | `45.94.209.92` |
+| `api.highlightai.in` | A | `45.94.209.92` |
+
+Verify propagation before proceeding:
+
+```bash
+dig +short highlightai.in
+dig +short api.highlightai.in
+```
+
+Both must return `45.94.209.92`.
+
+---
+
+## 2 — Firewall
+
+```bash
+sudo ufw allow 22/tcp    # SSH
+sudo ufw allow 80/tcp    # HTTP (Let's Encrypt + redirect)
+sudo ufw allow 443/tcp   # HTTPS
+sudo ufw deny 3000/tcp   # block direct frontend access
+sudo ufw deny 8000/tcp   # block direct backend access
+sudo ufw enable
+sudo ufw status
+```
+
+Ports 3000 and 8000 must **not** be publicly reachable — all traffic flows through nginx.
+
+---
+
+## 3 — Nginx Installation
+
+```bash
+sudo apt update && sudo apt install -y nginx
+sudo systemctl enable nginx
+```
+
+Deploy the config:
+
+```bash
+sudo cp nginx/agc.conf /etc/nginx/sites-available/agc
+sudo ln -sf /etc/nginx/sites-available/agc /etc/nginx/sites-enabled/agc
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t          # must print: syntax is ok / test is successful
+```
+
+---
+
+## 4 — SSL with Let's Encrypt
+
+```bash
+sudo apt install -y certbot python3-certbot-nginx
+
+# Issue cert for all three names in one certificate
+sudo certbot --nginx \
+  -d highlightai.in \
+  -d www.highlightai.in \
+  -d api.highlightai.in \
+  --agree-tos \
+  --email admin@highlightai.in \
+  --no-eff-email
+```
+
+Certbot will edit the nginx config to point to the new cert paths and reload nginx automatically.
+
+Verify the cert:
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+curl -Is https://highlightai.in | head -5
+# Expect: HTTP/2 200
+```
+
+---
+
+## 5 — SSL Auto-Renewal
+
+Let's Encrypt certs expire every 90 days. Certbot installs a systemd timer automatically:
+
+```bash
+sudo systemctl status certbot.timer   # should show: active (waiting)
+```
+
+Test renewal without issuing:
+
+```bash
+sudo certbot renew --dry-run
+```
+
+Certbot reloads nginx automatically post-renewal. No cron job needed.
+
+---
+
+## 6 — Backend Deployment
+
+### Environment variables (`backend/.env`)
+
+```dotenv
+ENVIRONMENT=production
+HTTPS_ENABLED=true
+
+JWT_SECRET_KEY=<generate with: python -c "import secrets; print(secrets.token_hex(32))">
+JWT_ALGORITHM=HS256
+JWT_EXPIRY_HOURS=24
+
+FRONTEND_URL=https://highlightai.in
+PRODUCTION_URL=https://highlightai.in
+WWW_PRODUCTION_URL=https://www.highlightai.in
+```
+
+### Start the backend
+
+```bash
+cd /path/to/AGC_AI_Highlight_Creator/backend
+source venv/bin/activate
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+For production, run under `systemd` or `supervisor` so it survives reboots.
+
+Startup log should show:
+
+```
+✅ SQLite Database Initialized
+✅ Startup Validation Completed
+```
+
+If you see the `⚠️ WARNING` line, `HTTPS_ENABLED=true` is missing from `.env`.
+
+---
+
+## 7 — Frontend Deployment
+
+### Environment variables (`frontend/.env.local` on the server)
+
+```dotenv
+NEXT_PUBLIC_API_URL=https://api.highlightai.in
+```
+
+This is the only value that must change between dev and production. No other API URL is hardcoded in the frontend code.
+
+### Build and start
+
+```bash
+cd /path/to/AGC_AI_Highlight_Creator/frontend
+npm install
+npm run build
+npm start -- --port 3000
+```
+
+Run under `systemd` or `pm2` for persistence.
+
+---
+
+## 8 — Health Verification Checklist
+
+Run these after every deployment or cert renewal:
+
+- [ ] `curl -Is https://highlightai.in | head -1` → `HTTP/2 200`
+- [ ] `curl -Is https://www.highlightai.in | head -1` → `HTTP/2 301` (redirects to apex)
+- [ ] `curl -Is https://api.highlightai.in/health` → `HTTP/2 200`
+- [ ] `curl -Is http://highlightai.in | head -1` → `HTTP/1.1 301` (redirects to HTTPS)
+- [ ] `curl -Is http://api.highlightai.in | head -1` → `HTTP/1.1 301`
+- [ ] Browser: open `https://highlightai.in` — padlock visible, no mixed-content warnings
+- [ ] Browser: login and upload a video — pipeline runs to completion
+- [ ] Response headers include `Strict-Transport-Security` (check DevTools → Network → response headers)
+- [ ] Response headers include `X-Content-Type-Options: nosniff`
+- [ ] SSL Labs grade: `curl https://www.ssllabs.com/ssltest/analyze.html?d=highlightai.in` (or visit in browser) — aim for A or A+
+
+---
+
+## 9 — Common Issues
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `502 Bad Gateway` on API | Backend not running on port 8000 | `systemctl status agc-backend` |
+| Mixed-content warning | `NEXT_PUBLIC_API_URL` still set to `http://` | Update `frontend/.env.local` to `https://api.highlightai.in` and rebuild |
+| Cert not found | DNS not propagated when certbot ran | Re-run `certbot --nginx -d ...` after DNS propagates |
+| Upload fails with `413` | `client_max_body_size` too low | Already set to `500m` in `nginx/agc.conf` |
+| CORS errors in browser | `PRODUCTION_URL` not set in backend `.env` | Add `PRODUCTION_URL=https://highlightai.in` to `backend/.env` |

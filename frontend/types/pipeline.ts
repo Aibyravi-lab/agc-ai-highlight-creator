@@ -137,3 +137,21 @@ export interface HistoryResponse {
   success: boolean;
   data: HistoryItem[];
 }
+
+export interface ProjectItem {
+  id: number;
+  job_id: string | null;
+  original_video_name: string;
+  thumbnail_path: string | null;
+  horizontal_reel_path: string | null;
+  vertical_reel_path: string | null;
+  metadata_json_path: string | null;
+  status: string;
+  created_at: string;
+}
+
+export interface ProjectsResponse {
+  success: boolean;
+  count: number;
+  data: ProjectItem[];
+}

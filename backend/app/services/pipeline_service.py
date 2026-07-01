@@ -8,18 +8,25 @@ from app.services.clip_service import ClipService
 from app.services.editor_service import EditorService
 from app.services.reel_service import ReelService
 from app.services.metadata_service import build_metadata
-from app.services.vision_service import VisionService
-from app.services.scoring_service import ScoringService
 from app.services.duration_service import DurationService
+from app.services.scoring import (
+    ClipScorer,
+    MotionScorer,
+    AudioScorer,
+    SceneScorer,
+    DurationScorer,
+    ScoringOrchestrator,
+)
 from app.services.thumbnail_rank_service import ThumbnailRankService
 from app.services.title_service import TitleService
 from app.services.viral_package_service import ViralPackageService
 from app.services.whisper_service import WhisperService
 from app.services.caption_service import CaptionService
-from app.services.scene_service import SceneService
 from app.services.audio_service import AudioService
 from app.services.progress_service import ProgressService
 from app.services.job_service import JobService
+from app.services.highlight_ranking_service import HighlightRankingService
+from app.services.project_service import ProjectService
 
 
 class PipelineService:
@@ -78,8 +85,6 @@ class PipelineService:
 
         highlights = []
 
-        scene_service = SceneService()
-
         audio_data = (
             AudioService.build_audio_map(
                 video_path=video_path
@@ -136,80 +141,41 @@ class PipelineService:
                     f"{frames[index - 1]['frame_name']}"
                 )
 
-                motion_score = (
-                    VisionService.calculate_motion_score(
-                        previous_frame,
-                        frame_path
-                    )
+                motion_score = MotionScorer.score(
+                    previous_frame,
+                    frame_path
                 )
 
-                scene_result = (
-                    scene_service.analyze_frame(
-                        current_frame_path=frame_path,
-                        previous_frame_path=previous_frame
-                    )
+                scene_score = SceneScorer.score(
+                    current_frame_path=frame_path,
+                    previous_frame_path=previous_frame
                 )
 
-                scene_score = (
-                    scene_result["scene_score"]
-                )
-                audio_score = (
-                    AudioService.get_audio_score(
-                        audio_map=audio_map,
-                        timestamp=frame[
-                            "timestamp_second"
-        ]
-    )
-)
-
-            if is_silent_video:
-
-                base_score = (
-
-                    clip_result["score"] * 0.65
-
-                    +
-
-                    motion_score * 0.20
-
-                    +
-
-                    scene_score * 0.15
-
+                audio_score = AudioScorer.score(
+                    audio_map=audio_map,
+                    timestamp=frame["timestamp_second"]
                 )
 
-            else:
+            clip_score = ClipScorer.score(clip_result)
 
-                base_score = (
+            duration_score = DurationScorer.score(
+                clip_result["best_match"]
+            )
 
-                    clip_result["score"] * 0.50
-
-                    +
-
-                    motion_score * 0.20
-
-                    +
-
-                    scene_score * 0.15
-
-                    +
-
-                    audio_score * 0.15
-
-                )
-            weighted_score = (
-                ScoringService.apply_action_weight(
-                    score=base_score,
-                    action=clip_result[
-                        "best_match"
-                    ]
-                )
+            weighted_score = ScoringOrchestrator.compute_weighted_score(
+                clip_score=clip_score,
+                motion_score=motion_score,
+                audio_score=audio_score,
+                scene_score=scene_score,
+                duration_score=duration_score,
+                action=clip_result["best_match"],
+                is_silent=is_silent_video
             )
             print(
                 "DEBUG:",
                 frame["timestamp_second"],
                 clip_result["best_match"],
-                "clip=", round(clip_result["score"], 3),
+                "clip=", round(clip_score, 3),
                 "motion=", round(motion_score, 3),
                 "scene=", round(scene_score, 3),
                 "audio=", round(audio_score, 3),
@@ -299,10 +265,11 @@ class PipelineService:
                     "score":
                     final_score,
 
+                    "weighted_score":
+                    weighted_score,
+
                     "clip_score":
-                    clip_result[
-                        "score"
-                    ],
+                    clip_score,
 
                     "motion_score":
                     motion_score,
@@ -312,6 +279,9 @@ class PipelineService:
 
                     "audio_score":
                     audio_score,
+
+                    "duration_score":
+                    duration_score,
 
                     "thumbnail_score":
                     thumbnail_score,
@@ -345,77 +315,13 @@ class PipelineService:
                 )
 
         print(
-            "Applying smart diversity filter..."
+            "Applying highlight ranking..."
         )
-
-        highlights.sort(
-            key=lambda x: x["score"],
-            reverse=True
-        )
-
-        action_counter = {}
-
-        diversified_highlights = []
-
-        MIN_HIGHLIGHT_GAP = 45
-
-        for highlight in highlights:
-
-            action = (
-                highlight["action"]
-            )
-
-            if (
-                action
-                not in action_counter
-            ):
-                action_counter[
-                    action
-                ] = 0
-
-            if (
-                action_counter[
-                    action
-                ] >= 1
-            ):
-                continue
-
-            is_too_close = False
-
-            for selected in (
-                diversified_highlights
-            ):
-
-                if abs(
-
-                    highlight[
-                        "timestamp"
-                    ]
-
-                    -
-
-                    selected[
-                        "timestamp"
-                    ]
-
-                ) < MIN_HIGHLIGHT_GAP:
-
-                    is_too_close = True
-                    break
-
-            if is_too_close:
-                continue
-
-            action_counter[
-                action
-            ] += 1
-
-            diversified_highlights.append(
-                highlight
-            )
 
         top_highlights = (
-            diversified_highlights[:10]
+            HighlightRankingService.rank(
+                highlights
+            )
         )
 
         if len(top_highlights) == 0:
@@ -640,6 +546,29 @@ class PipelineService:
                 len(top_highlights),
 
                 user_id=user_id
+            )
+
+            ProjectService.create_project(
+                user_id=user_id,
+                job_id=job_id,
+                original_video_name=
+                Path(video_path).name,
+
+                thumbnail_path=
+                metadata.get("thumbnail"),
+
+                horizontal_reel_path=
+                metadata.get("final_reel"),
+
+                vertical_reel_path=
+                metadata.get(
+                    "vertical_reel"
+                ) or None,
+
+                metadata_json_path=
+                metadata.get(
+                    "result_json"
+                ) or None,
             )
 
         metadata[

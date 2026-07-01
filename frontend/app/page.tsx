@@ -7,6 +7,7 @@ import { UploadPanel } from "../components/UploadPanel";
 import { ProgressPanel } from "../components/ProgressPanel";
 import { StatsPanel } from "../components/StatsPanel";
 import { HistoryPanel } from "../components/HistoryPanel";
+import { ProjectsPanel } from "../components/ProjectsPanel";
 import { DownloadPanel } from "../components/DownloadPanel";
 import { ResultPanel } from "../components/ResultPanel";
 import { useAuth } from "../context/AuthContext";
@@ -58,9 +59,12 @@ function DashboardContent({
     jobStats,
     error,
     currentJobId,
+    successMessage,
+    fileInputKey,
     setSelectedFile,
     generateHighlights,
     clearError,
+    clearSuccessMessage,
   } = usePipeline();
 
   const handleLogout = () => {
@@ -108,6 +112,7 @@ function DashboardContent({
             loading={loading}
             onSelectFile={setSelectedFile}
             onGenerateHighlights={handleGenerateHighlights}
+            fileInputKey={fileInputKey}
           />
         </section>
 
@@ -121,6 +126,8 @@ function DashboardContent({
             onClearError={clearError}
             currentJobId={currentJobId}
             currentJob={currentJob}
+            successMessage={successMessage}
+            onClearSuccessMessage={clearSuccessMessage}
           />
         </section>
 
@@ -132,6 +139,11 @@ function DashboardContent({
         {/* History */}
         <section>
           <HistoryPanel history={history} />
+        </section>
+
+        {/* My Projects */}
+        <section>
+          <ProjectsPanel />
         </section>
 
         {/* Results */}

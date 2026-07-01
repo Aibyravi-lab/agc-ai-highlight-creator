@@ -261,3 +261,19 @@ export async function downloadClip(clipPath: string | undefined): Promise<void> 
   if (!clipPath) return;
   await authedBlobDownload(clipPath, filenameFromPath(clipPath));
 }
+
+export async function getProjects() {
+  const response = await authedRequest("/projects");
+  return {
+    success: response.success as boolean,
+    count: response.count as number,
+    data: response.data as import("../types/pipeline").ProjectItem[],
+  };
+}
+
+export async function deleteProject(id: number) {
+  return authedRequest(`/projects/${id}`, { method: "DELETE" }) as Promise<{
+    success: boolean;
+    message: string;
+  }>;
+}

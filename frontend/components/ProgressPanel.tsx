@@ -11,6 +11,8 @@ interface ProgressPanelProps {
   onClearError?: () => void;
   currentJobId: string | null;
   currentJob: PipelineJob | null;
+  successMessage?: string | null;
+  onClearSuccessMessage?: () => void;
 }
 
 function StatusBadge({ label, cls }: { label: string; cls: string }) {
@@ -62,6 +64,8 @@ export function ProgressPanel({
   onClearError,
   currentJobId,
   currentJob,
+  successMessage,
+  onClearSuccessMessage,
 }: ProgressPanelProps) {
   const [elapsed, setElapsed] = useState(0);
   // Pinned once per job — never recalculated on re-render.
@@ -89,7 +93,7 @@ export function ProgressPanel({
     return () => clearInterval(id);
   }, [loading, currentJob?.created_at]);
 
-  if (!loading && !error) {
+  if (!loading && !error && !successMessage) {
     return null;
   }
 
@@ -114,6 +118,25 @@ export function ProgressPanel({
               <button
                 onClick={onClearError}
                 className="shrink-0 px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium"
+              >
+                Dismiss
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {successMessage && !loading && !error && (
+        <div className="rounded-xl border border-green-500/30 bg-green-950/20 p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-green-400 font-semibold text-sm">Processing Complete</p>
+              <p className="mt-1 text-sm text-green-300/70">{successMessage}</p>
+            </div>
+            {onClearSuccessMessage && (
+              <button
+                onClick={onClearSuccessMessage}
+                className="shrink-0 px-4 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-medium"
               >
                 Dismiss
               </button>

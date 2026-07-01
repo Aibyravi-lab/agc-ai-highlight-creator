@@ -114,6 +114,34 @@ class DatabaseService:
             if "duplicate column name" not in str(exc).lower():
                 raise
 
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS projects (
+
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                user_id INTEGER NOT NULL,
+
+                job_id TEXT,
+
+                original_video_name TEXT,
+
+                thumbnail_path TEXT,
+
+                horizontal_reel_path TEXT,
+
+                vertical_reel_path TEXT,
+
+                metadata_json_path TEXT,
+
+                status TEXT DEFAULT 'completed',
+
+                created_at TEXT NOT NULL
+
+            )
+            """
+        )
+
         connection.commit()
 
         connection.close()

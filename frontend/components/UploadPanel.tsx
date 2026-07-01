@@ -5,6 +5,7 @@ interface UploadPanelProps {
   loading: boolean;
   onSelectFile: (file: File | null) => void;
   onGenerateHighlights: () => void;
+  fileInputKey: number;
 }
 
 export function UploadPanel({
@@ -12,6 +13,7 @@ export function UploadPanel({
   loading,
   onSelectFile,
   onGenerateHighlights,
+  fileInputKey,
 }: UploadPanelProps) {
   return (
     <div className="mt-10 w-full max-w-2xl">
@@ -20,6 +22,7 @@ export function UploadPanel({
       </label>
 
       <input
+        key={fileInputKey}
         type="file"
         accept="video/*"
         onChange={(e) => {
