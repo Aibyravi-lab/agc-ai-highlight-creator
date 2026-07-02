@@ -155,3 +155,20 @@ export interface ProjectsResponse {
   count: number;
   data: ProjectItem[];
 }
+
+export interface FeedbackItem {
+  id: number;
+  user_id: number;
+  project_id: number | null;
+  rating: number | null;
+  thumbs: "up" | "down" | null;
+  comment: string | null;
+  created_at: string;
+}
+
+export interface SubmitFeedbackRequest {
+  project_id?: number | null;
+  rating?: number | null;
+  thumbs?: "up" | "down" | null;
+  comment?: string | null;
+}

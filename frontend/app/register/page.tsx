@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "../../context/AuthContext";
+import { track } from "../../services/analytics";
 
 export default function RegisterPage() {
   const { register, user, loading } = useAuth();
@@ -17,7 +18,7 @@ export default function RegisterPage() {
 
   useEffect(() => {
     if (!loading && user) {
-      router.replace("/");
+      router.replace("/dashboard");
     }
   }, [loading, user, router]);
 
@@ -33,7 +34,8 @@ export default function RegisterPage() {
     setSubmitting(true);
     try {
       await register(name, email, password);
-      router.replace("/");
+      track("User Registered");
+      router.replace("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
     } finally {

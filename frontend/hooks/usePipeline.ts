@@ -10,6 +10,7 @@ import {
   getJobStats,
   getProgress,
 } from "../services/api";
+import { track } from "../services/analytics";
 import type {
   PipelineJob,
   JobStats,
@@ -95,6 +96,7 @@ export function usePipeline() {
 
         if (job.status === "completed") {
           stopPolling();
+          track("Pipeline Completed");
           setState((prev) => {
             return { ...prev, result: job.result ?? null, loading: false, progress: 100, progressStatus: "Completed", currentJobId: null, selectedFile: null, successMessage: "Highlights generated successfully!", fileInputKey: prev.fileInputKey + 1 };
           });
@@ -156,12 +158,14 @@ export function usePipeline() {
       });
 
       try {
+        track("Upload Started");
         const uploadResponse = await uploadVideo(file);
 
         if (!uploadResponse.location) {
           throw new Error("Upload location missing");
         }
 
+        track("Upload Completed");
         setState((prev) => {
           return { ...prev, progressStatus: "Starting pipeline...", progress: 10 };
         });
@@ -172,6 +176,7 @@ export function usePipeline() {
           throw new Error("Job ID missing from response");
         }
 
+        track("Pipeline Started");
         const jobId = startResponse.job_id;
 
         setState((prev) => {

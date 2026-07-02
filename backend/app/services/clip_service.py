@@ -2,7 +2,7 @@ from transformers import CLIPProcessor, CLIPModel
 from PIL import Image
 import torch
 
-from app.config.game_events import GAME_EVENTS
+from app.services.game_profiles.base_profile import BaseProfile, DefaultProfile
 
 
 class ClipService:
@@ -16,28 +16,25 @@ class ClipService:
     )
 
     @classmethod
-    def get_all_prompts(cls):
+    def get_all_prompts(
+        cls,
+        profile: BaseProfile | None = None
+    ) -> list[dict]:
 
-        prompts = []
+        if profile is None:
+            profile = DefaultProfile()
 
-        for category, category_prompts in GAME_EVENTS.items():
-
-            for prompt in category_prompts:
-
-                prompts.append(
-                    {
-                        "category": category,
-                        "prompt": prompt
-                    }
-                )
-
-        return prompts
+        return profile.get_all_prompts()
 
     @classmethod
     def analyze_frame(
         cls,
-        image_path: str
+        image_path: str,
+        profile: BaseProfile | None = None
     ):
+
+        if profile is None:
+            profile = DefaultProfile()
 
         image = Image.open(
             image_path
@@ -45,7 +42,7 @@ class ClipService:
             "RGB"
         )
 
-        prompt_objects = cls.get_all_prompts()
+        prompt_objects = cls.get_all_prompts(profile)
 
         prompt_texts = [
 
@@ -103,32 +100,29 @@ class ClipService:
     @classmethod
     def get_highlight_result(
         cls,
-        image_path: str
+        image_path: str,
+        profile: BaseProfile | None = None
     ):
 
+        if profile is None:
+            profile = DefaultProfile()
+
         results = cls.analyze_frame(
-            image_path
+            image_path,
+            profile
         )
 
         top_results = results[:3]
 
         best_result = top_results[0]
 
-        positive_categories = [
+        positive_categories = (
+            profile.get_positive_categories()
+        )
 
-            "combat",
-            "vehicle",
-            "action",
-            "victory",
-            "danger"
-
-        ]
-
-        negative_categories = [
-
-            "exploration"
-
-        ]
+        negative_categories = (
+            profile.get_negative_categories()
+        )
 
         is_positive = (
             best_result["category"]

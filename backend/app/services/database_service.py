@@ -142,6 +142,28 @@ class DatabaseService:
             """
         )
 
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS feedback (
+
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                user_id INTEGER NOT NULL,
+
+                project_id INTEGER,
+
+                rating INTEGER,
+
+                thumbs TEXT,
+
+                comment TEXT,
+
+                created_at TEXT NOT NULL
+
+            )
+            """
+        )
+
         connection.commit()
 
         connection.close()

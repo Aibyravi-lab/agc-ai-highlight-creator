@@ -29,7 +29,7 @@ class Settings(BaseSettings):
 
     APP_VERSION: str = os.getenv(
         "APP_VERSION",
-        "0.4.0-beta"
+        "0.5.0-beta"
     )
 
     FRONTEND_URL: str = os.getenv(
@@ -154,6 +154,76 @@ class Settings(BaseSettings):
             "HTTPS_ENABLED",
             "false"
         ).lower() == "true"
+    )
+
+    ADAPTIVE_THRESHOLD_ENABLED: bool = (
+        os.getenv(
+            "ADAPTIVE_THRESHOLD_ENABLED",
+            "true"
+        ).lower() == "true"
+    )
+
+    ADAPTIVE_THRESHOLD_PERCENTILE: int = int(
+        os.getenv(
+            "ADAPTIVE_THRESHOLD_PERCENTILE",
+            "60"
+        )
+    )
+
+    MIN_ADAPTIVE_THRESHOLD: float = float(
+        os.getenv(
+            "MIN_ADAPTIVE_THRESHOLD",
+            "0.15"
+        )
+    )
+
+    DEFAULT_HIGHLIGHT_THRESHOLD: float = float(
+        os.getenv(
+            "DEFAULT_HIGHLIGHT_THRESHOLD",
+            "0.20"
+        )
+    )
+
+    FINE_SCAN_WINDOW_SECONDS: int = int(
+        os.getenv(
+            "FINE_SCAN_WINDOW_SECONDS",
+            "5"
+        )
+    )
+
+    COARSE_TRIGGER_MULTIPLIER: float = float(
+        os.getenv(
+            "COARSE_TRIGGER_MULTIPLIER",
+            "0.50"
+        )
+    )
+
+    SYNERGY_ENABLED: bool = (
+        os.getenv(
+            "SYNERGY_ENABLED",
+            "true"
+        ).lower() == "true"
+    )
+
+    SYNERGY_SIGNAL_THRESHOLD: float = float(
+        os.getenv(
+            "SYNERGY_SIGNAL_THRESHOLD",
+            "0.50"
+        )
+    )
+
+    SYNERGY_INCREMENT: float = float(
+        os.getenv(
+            "SYNERGY_INCREMENT",
+            "0.10"
+        )
+    )
+
+    MAX_SYNERGY_MULTIPLIER: float = float(
+        os.getenv(
+            "MAX_SYNERGY_MULTIPLIER",
+            "1.50"
+        )
     )
 
 

@@ -1,4 +1,4 @@
-# AGC v0.4.0-beta — Beta Verification Checklist
+# AGC v0.5.0-beta — Beta Verification Checklist
 
 Complete this checklist on a fresh staging or production environment before announcing the public beta.
 

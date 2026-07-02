@@ -186,16 +186,26 @@ class AudioService:
             }
 
     @classmethod
-    def get_audio_score(
+    def get_windowed_audio_score(
         cls,
         audio_map: dict,
-        timestamp: int
-    ):
+        timestamp: int,
+        window: int = 2
+    ) -> float:
 
         if not audio_map:
             return 0.0
 
-        return audio_map.get(
-            timestamp,
-            0.0
-        )
+        scores = [
+            audio_map[t]
+            for t in range(
+                timestamp - window,
+                timestamp + window + 1
+            )
+            if t in audio_map
+        ]
+
+        if not scores:
+            return 0.0
+
+        return max(scores)

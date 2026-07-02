@@ -117,7 +117,7 @@ export function StatsPanel({ jobStats, allJobs }: StatsPanelProps) {
 
   return (
     <div className="space-y-6">
-      {/* Section 2 — System Statistics */}
+      {/* System Statistics */}
       {jobStats && (
         <div>
           <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">
@@ -152,27 +152,34 @@ export function StatsPanel({ jobStats, allJobs }: StatsPanelProps) {
         </div>
       )}
 
-      {/* Section 3 — Recent Jobs */}
-      {recentJobs.length > 0 && (
-        <div>
-          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">
-            Recent Jobs
-          </h2>
+      {/* Recent Jobs */}
+      <div>
+        <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">
+          Recent Jobs
+        </h2>
+
+        {recentJobs.length === 0 ? (
+          <div className="rounded-xl border border-[#1e2030] bg-[#0f1117] p-8 text-center">
+            <p className="text-gray-500 text-sm">
+              No jobs yet. Upload your first gameplay video.
+            </p>
+          </div>
+        ) : (
           <div className="rounded-xl border border-[#1e2030] bg-[#0f1117] overflow-hidden">
             <div className="overflow-x-auto max-h-72 overflow-y-auto">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-[#0f1117]">
                   <tr className="border-b border-[#1e2030]">
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
                       Status
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
                       Progress
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
                       Created
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
                       Job ID
                     </th>
                   </tr>
@@ -185,7 +192,14 @@ export function StatsPanel({ jobStats, allJobs }: StatsPanelProps) {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <div className="w-20 bg-[#1a1d2e] rounded-full h-1.5 overflow-hidden">
+                          <div
+                            className="w-20 bg-[#1a1d2e] rounded-full h-1.5 overflow-hidden"
+                            role="progressbar"
+                            aria-valuenow={job.progress ?? 0}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-label={`${job.progress ?? 0}% complete`}
+                          >
                             <div
                               className="bg-blue-500 h-1.5 rounded-full"
                               style={{ width: `${job.progress ?? 0}%` }}
@@ -208,8 +222,8 @@ export function StatsPanel({ jobStats, allJobs }: StatsPanelProps) {
               </table>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

@@ -1,5 +1,7 @@
 import time
+import numpy as np
 from pathlib import Path
+from app.config.config import settings
 from app.services.stats_service import StatsService
 from app.services.cleanup_service import CleanupService
 from app.services.result_export_service import ResultExportService
@@ -28,6 +30,9 @@ from app.services.progress_service import ProgressService
 from app.services.job_service import JobService
 from app.services.highlight_ranking_service import HighlightRankingService
 from app.services.project_service import ProjectService
+from app.services.game_profiles.profile_registry import ProfileRegistry
+from app.services.game_profiles.base_profile import BaseProfile
+from app.services.explainability_service import ExplainabilityService
 
 
 class PipelineService:
@@ -40,6 +45,13 @@ class PipelineService:
         user_id: int | None = None
     ):
         start_time = time.time()
+
+        profile = ProfileRegistry.detect_profile(video_path)
+        print(
+            f"Game profile detected: "
+            f"{profile.game_name}"
+        )
+
         ProgressService.update(
             progress=5,
             status="Starting Pipeline"
@@ -81,7 +93,8 @@ class PipelineService:
                 job_id=job_id,
                 user_id=user_id,
                 frames_data=frames_data,
-                start_time=start_time
+                start_time=start_time,
+                profile=profile
             )
 
         finally:
@@ -91,13 +104,229 @@ class PipelineService:
             )
 
     @classmethod
+    def _compute_adaptive_threshold(
+        cls,
+        frames: list,
+        frames_location: str,
+        audio_map: dict,
+        is_silent: bool
+    ) -> float:
+        try:
+            energy_scores: list[float] = []
+
+            for index, frame in enumerate(frames):
+
+                if index % 5 != 0:
+                    continue
+
+                frame_path = (
+                    f"{frames_location}/"
+                    f"{frame['frame_name']}"
+                )
+
+                motion_score = 0.0
+                if index > 0:
+                    previous_path = (
+                        f"{frames_location}/"
+                        f"{frames[index - 1]['frame_name']}"
+                    )
+                    motion_score = MotionScorer.score(
+                        previous_path,
+                        frame_path
+                    )
+
+                audio_score = 0.0
+                if not is_silent:
+                    audio_score = AudioScorer.score(
+                        audio_map=audio_map,
+                        timestamp=frame["timestamp_second"]
+                    )
+
+                energy = (
+                    motion_score * 0.60
+                    + audio_score * 0.40
+                )
+                energy_scores.append(energy)
+
+            if not energy_scores:
+                print(
+                    "[ADAPTIVE THRESHOLD] No energy scores — "
+                    f"using default: "
+                    f"{settings.DEFAULT_HIGHLIGHT_THRESHOLD}"
+                )
+                return settings.DEFAULT_HIGHLIGHT_THRESHOLD
+
+            threshold = float(max(
+                settings.MIN_ADAPTIVE_THRESHOLD,
+                np.percentile(
+                    energy_scores,
+                    settings.ADAPTIVE_THRESHOLD_PERCENTILE
+                )
+            ))
+            print(
+                f"[ADAPTIVE THRESHOLD] threshold={round(threshold, 4)} "
+                f"(percentile={settings.ADAPTIVE_THRESHOLD_PERCENTILE}, "
+                f"samples={len(energy_scores)}, "
+                f"min={round(min(energy_scores), 4)}, "
+                f"max={round(max(energy_scores), 4)})"
+            )
+            return threshold
+
+        except Exception as ex:
+            print(
+                f"[ADAPTIVE THRESHOLD] Computation failed: {ex} — "
+                f"using default: "
+                f"{settings.DEFAULT_HIGHLIGHT_THRESHOLD}"
+            )
+            return settings.DEFAULT_HIGHLIGHT_THRESHOLD
+
+    @classmethod
+    def _score_single_frame(
+        cls,
+        frames: list,
+        frames_location: str,
+        index: int,
+        frame: dict,
+        audio_map: dict,
+        is_silent: bool,
+        profile: BaseProfile | None
+    ) -> dict:
+        frame_path = (
+            f"{frames_location}/"
+            f"{frame['frame_name']}"
+        )
+
+        clip_result = ClipService.get_highlight_result(
+            frame_path,
+            profile
+        )
+
+        motion_score = 0.0
+        scene_score = 0.0
+        audio_score = 0.0
+
+        if index > 0:
+            previous_frame = (
+                f"{frames_location}/"
+                f"{frames[index - 1]['frame_name']}"
+            )
+            motion_score = MotionScorer.score(
+                previous_frame,
+                frame_path
+            )
+            scene_score = SceneScorer.score(
+                current_frame_path=frame_path,
+                previous_frame_path=previous_frame
+            )
+            audio_score = AudioScorer.score(
+                audio_map=audio_map,
+                timestamp=frame["timestamp_second"]
+            )
+
+        clip_score = ClipScorer.score(clip_result)
+        duration_score = DurationScorer.score(clip_result["best_match"])
+
+        weighted_score = ScoringOrchestrator.compute_weighted_score(
+            clip_score=clip_score,
+            motion_score=motion_score,
+            audio_score=audio_score,
+            scene_score=scene_score,
+            duration_score=duration_score,
+            action=clip_result["best_match"],
+            is_silent=is_silent,
+            weights=profile.scoring_weights if profile is not None else None,
+            category_overrides=profile.category_weight_overrides if profile is not None else None
+        )
+
+        return {
+            "clip_result": clip_result,
+            "clip_score": clip_score,
+            "motion_score": motion_score,
+            "scene_score": scene_score,
+            "audio_score": audio_score,
+            "duration_score": duration_score,
+            "weighted_score": weighted_score,
+        }
+
+    @classmethod
+    def _build_highlight_entry(
+        cls,
+        video_path: str,
+        frame: dict,
+        scores: dict
+    ) -> dict:
+        clip_result = scores["clip_result"]
+        weighted_score = scores["weighted_score"]
+
+        clip_duration = DurationService.get_duration(
+            clip_result["best_match"]
+        )
+
+        created_clip = EditorService.create_clip(
+            video_path=video_path,
+            timestamp=frame["timestamp_second"],
+            duration=clip_duration
+        )
+
+        thumbnail_score = (
+            ThumbnailRankService.get_thumbnail_score(
+                created_clip["thumbnail_path"]
+            )
+        )
+
+        final_score = (
+            weighted_score * 0.90
+            + thumbnail_score * 0.10
+        )
+
+        return {
+            "timestamp": frame["timestamp_second"],
+            "category": clip_result["category"],
+            "action": clip_result["best_match"],
+            "score": final_score,
+            "weighted_score": weighted_score,
+            "clip_score": scores["clip_score"],
+            "motion_score": scores["motion_score"],
+            "scene_score": scores["scene_score"],
+            "audio_score": scores["audio_score"],
+            "duration_score": scores["duration_score"],
+            "thumbnail_score": thumbnail_score,
+            "duration": clip_duration,
+            "reason": (
+                "CLIP + Motion + "
+                "Action Weight + "
+                "Thumbnail Rank"
+            ),
+            "clip_path": created_clip["clip_path"],
+            "thumbnail_path": created_clip["thumbnail_path"],
+        }
+
+    @classmethod
+    def _merge_and_deduplicate(cls, highlights: list) -> list:
+        """Keep highest-scoring highlight when two are within 15 seconds."""
+        sorted_highlights = sorted(
+            highlights,
+            key=lambda h: h["weighted_score"],
+            reverse=True
+        )
+        merged: list = []
+        for h in sorted_highlights:
+            if all(
+                abs(h["timestamp"] - kept["timestamp"]) > 15
+                for kept in merged
+            ):
+                merged.append(h)
+        return merged
+
+    @classmethod
     def _run_pipeline(
         cls,
         video_path: str,
         job_id: str | None,
         user_id: int | None,
         frames_data: dict,
-        start_time: float
+        start_time: float,
+        profile: BaseProfile | None = None
     ):
 
         ProgressService.update(
@@ -115,35 +344,57 @@ class PipelineService:
             "CLIP + Motion..."
         )
 
-        highlights = []
-
         audio_data = (
             AudioService.build_audio_map(
                 video_path=video_path
             )
         )
 
-        audio_map = (
-            audio_data["audio_map"]
-        )
+        audio_map = audio_data["audio_map"]
+        is_silent_video = audio_data["is_silent"]
 
-        is_silent_video = (
-            audio_data["is_silent"]
-        )
+        if settings.ADAPTIVE_THRESHOLD_ENABLED:
+            print(
+                "[ADAPTIVE THRESHOLD] Running pre-scan..."
+            )
+            adaptive_threshold = (
+                cls._compute_adaptive_threshold(
+                    frames=frames_data["frames"],
+                    frames_location=frames_data["frame_location"],
+                    audio_map=audio_map,
+                    is_silent=is_silent_video
+                )
+            )
+        else:
+            adaptive_threshold = (
+                settings.DEFAULT_HIGHLIGHT_THRESHOLD
+            )
+            print(
+                "[ADAPTIVE THRESHOLD] Disabled — "
+                f"using default: {adaptive_threshold}"
+            )
 
-        last_highlight_time = -15
-
-        frames = (
-            frames_data["frames"]
-        )
+        frames = frames_data["frames"]
+        frames_location = frames_data["frame_location"]
         frames_analyzed = 0
 
-        for index, frame in enumerate(
-            frames
-        ):
+        # Pass 1 — Coarse Scan: every 5th frame
+        print("[PASS 1] Coarse scan starting...")
+        coarse_trigger = (
+            adaptive_threshold
+            * settings.COARSE_TRIGGER_MULTIPLIER
+        )
+        coarse_highlights: list = []
+        candidate_windows: list[tuple[float, float]] = []
+        coarse_frame_indices: set[int] = set()
+        last_highlight_time: float = -15.0
+
+        for index, frame in enumerate(frames):
 
             if index % 5 != 0:
                 continue
+
+            coarse_frame_indices.add(index)
             frames_analyzed += 1
             print(
                 f"Analyzing frame "
@@ -151,92 +402,45 @@ class PipelineService:
                 f"{len(frames)}"
             )
 
-            frame_path = (
-                f"{frames_data['frame_location']}/"
-                f"{frame['frame_name']}"
+            scores = cls._score_single_frame(
+                frames=frames,
+                frames_location=frames_location,
+                index=index,
+                frame=frame,
+                audio_map=audio_map,
+                is_silent=is_silent_video,
+                profile=profile
             )
 
-            clip_result = (
-                ClipService.get_highlight_result(
-                    frame_path
-                )
-            )
+            clip_result = scores["clip_result"]
+            weighted_score = scores["weighted_score"]
 
-            motion_score = 0.0
-            scene_score = 0.0
-            audio_score = 0.0
-
-            if index > 0:
-
-                previous_frame = (
-                    f"{frames_data['frame_location']}/"
-                    f"{frames[index - 1]['frame_name']}"
-                )
-
-                motion_score = MotionScorer.score(
-                    previous_frame,
-                    frame_path
-                )
-
-                scene_score = SceneScorer.score(
-                    current_frame_path=frame_path,
-                    previous_frame_path=previous_frame
-                )
-
-                audio_score = AudioScorer.score(
-                    audio_map=audio_map,
-                    timestamp=frame["timestamp_second"]
-                )
-
-            clip_score = ClipScorer.score(clip_result)
-
-            duration_score = DurationScorer.score(
-                clip_result["best_match"]
-            )
-
-            weighted_score = ScoringOrchestrator.compute_weighted_score(
-                clip_score=clip_score,
-                motion_score=motion_score,
-                audio_score=audio_score,
-                scene_score=scene_score,
-                duration_score=duration_score,
-                action=clip_result["best_match"],
-                is_silent=is_silent_video
-            )
             print(
                 "DEBUG:",
                 frame["timestamp_second"],
                 clip_result["best_match"],
-                "clip=", round(clip_score, 3),
-                "motion=", round(motion_score, 3),
-                "scene=", round(scene_score, 3),
-                "audio=", round(audio_score, 3),
+                "clip=", round(scores["clip_score"], 3),
+                "motion=", round(scores["motion_score"], 3),
+                "scene=", round(scores["scene_score"], 3),
+                "audio=", round(scores["audio_score"], 3),
                 "final=", round(weighted_score, 3)
             )
+
+            if weighted_score >= coarse_trigger:
+                ts = float(frame["timestamp_second"])
+                candidate_windows.append((
+                    ts - settings.FINE_SCAN_WINDOW_SECONDS,
+                    ts + settings.FINE_SCAN_WINDOW_SECONDS
+                ))
+
             if (
-
-                clip_result[
-                    "is_highlight"
-                ]
-
-                and
-
-                weighted_score >= 0.20
-
+                clip_result["is_highlight"]
+                and weighted_score >= adaptive_threshold
                 and (
-
-                    frame[
-                        "timestamp_second"
-                    ]
-
-                    -
-
-                    last_highlight_time
-
+                    frame["timestamp_second"]
+                    - last_highlight_time
                     >= 15
-
                 )
-
             ):
                 print(
                     "HIGHLIGHT FOUND:",
@@ -244,107 +448,109 @@ class PipelineService:
                     weighted_score
                 )
 
-                clip_duration = (
-                    DurationService.get_duration(
-                        clip_result[
-                            "best_match"
-                        ]
-                    )
+                highlight = cls._build_highlight_entry(
+                    video_path=video_path,
+                    frame=frame,
+                    scores=scores
+                )
+                coarse_highlights.append(highlight)
+                last_highlight_time = float(
+                    frame["timestamp_second"]
                 )
 
-                created_clip = (
-                    EditorService.create_clip(
-                        video_path=video_path,
-                        timestamp=frame[
-                            "timestamp_second"
-                        ],
-                        duration=clip_duration
-                    )
+        print(
+            f"[PASS 1] Complete: "
+            f"{len(coarse_highlights)} highlights, "
+            f"{len(candidate_windows)} candidate windows"
+        )
+
+        # Pass 2 — Fine Scan: every frame in candidate windows
+        ProgressService.update(
+            progress=55,
+            status="Fine Scan"
+        )
+        if job_id is not None:
+            JobService.update_job(
+                job_id=job_id,
+                progress=55,
+                message="Fine Scan"
+            )
+        print("[PASS 2] Fine scan starting...")
+
+        fine_scan_indices: set[int] = set()
+        for start_ts, end_ts in candidate_windows:
+            for i, frame in enumerate(frames):
+                if (
+                    i not in coarse_frame_indices
+                    and start_ts <= frame["timestamp_second"] <= end_ts
+                ):
+                    fine_scan_indices.add(i)
+
+        fine_highlights: list = []
+
+        for index in sorted(fine_scan_indices):
+            frame = frames[index]
+            frames_analyzed += 1
+            print(
+                f"[PASS 2] Frame "
+                f"{index + 1}/{len(frames)} "
+                f"@ {frame['timestamp_second']}s"
+            )
+
+            scores = cls._score_single_frame(
+                frames=frames,
+                frames_location=frames_location,
+                index=index,
+                frame=frame,
+                audio_map=audio_map,
+                is_silent=is_silent_video,
+                profile=profile
+            )
+
+            clip_result = scores["clip_result"]
+            weighted_score = scores["weighted_score"]
+
+            print(
+                "DEBUG [FINE]:",
+                frame["timestamp_second"],
+                clip_result["best_match"],
+                "clip=", round(scores["clip_score"], 3),
+                "motion=", round(scores["motion_score"], 3),
+                "scene=", round(scores["scene_score"], 3),
+                "audio=", round(scores["audio_score"], 3),
+                "final=", round(weighted_score, 3)
+            )
+
+            if (
+                clip_result["is_highlight"]
+                and weighted_score >= adaptive_threshold
+            ):
+                print(
+                    "FINE HIGHLIGHT FOUND:",
+                    frame["timestamp_second"],
+                    weighted_score
                 )
-
-                thumbnail_score = (
-                    ThumbnailRankService.get_thumbnail_score(
-                        created_clip[
-                            "thumbnail_path"
-                        ]
-                    )
+                highlight = cls._build_highlight_entry(
+                    video_path=video_path,
+                    frame=frame,
+                    scores=scores
                 )
+                fine_highlights.append(highlight)
 
-                final_score = (
+        print(
+            f"[PASS 2] Complete: "
+            f"{len(fine_highlights)} additional highlights"
+        )
 
-                    weighted_score * 0.90
-
-                    +
-
-                    thumbnail_score * 0.10
-
-                )
-
-                highlights.append({
-
-                    "timestamp":
-                    frame[
-                        "timestamp_second"
-                    ],
-                    "category":
-                    clip_result["category"],
-
-                    "action":
-                    clip_result[
-                        "best_match"
-                    ],
-
-                    "score":
-                    final_score,
-
-                    "weighted_score":
-                    weighted_score,
-
-                    "clip_score":
-                    clip_score,
-
-                    "motion_score":
-                    motion_score,
-
-                    "scene_score":
-                    scene_score,
-
-                    "audio_score":
-                    audio_score,
-
-                    "duration_score":
-                    duration_score,
-
-                    "thumbnail_score":
-                    thumbnail_score,
-
-                    "duration":
-                    clip_duration,
-
-                    "reason":
-                    (
-                        "CLIP + Motion + "
-                        "Action Weight + "
-                        "Thumbnail Rank"
-                    ),
-
-                    "clip_path":
-                    created_clip[
-                        "clip_path"
-                    ],
-
-                    "thumbnail_path":
-                    created_clip[
-                        "thumbnail_path"
-                    ]
-
-                })
-
-                last_highlight_time = (
-                    frame[
-                        "timestamp_second"
-                    ]
-                )
+        # Merge and deduplicate
+        all_highlights = coarse_highlights + fine_highlights
+        highlights = cls._merge_and_deduplicate(all_highlights)
+        duplicates_removed = len(all_highlights) - len(highlights)
+        print(
+            f"[MERGE] Total before dedup: {len(all_highlights)}, "
+            f"After dedup: {len(highlights)}, "
+            f"Duplicates removed: {duplicates_removed}"
+        )
 
         print(
             "Applying highlight ranking..."
@@ -352,13 +558,37 @@ class PipelineService:
 
         top_highlights = (
             HighlightRankingService.rank(
-                highlights
+                highlights,
+                profile=profile
             )
         )
 
-        if len(top_highlights) == 0:
+        profile_name = profile.game_name if profile is not None else "Default"
+        category_overrides = (
+            profile.category_weight_overrides if profile is not None else None
+        )
+        ranking_bonus = (
+            profile.ranking_bonus if profile is not None else {}
+        )
+        for h in top_highlights:
+            h["explanation"] = ExplainabilityService.build(
+                clip_score=h["clip_score"],
+                motion_score=h["motion_score"],
+                scene_score=h["scene_score"],
+                audio_score=h["audio_score"],
+                duration_score=h["duration_score"],
+                weighted_score=h["weighted_score"],
+                ranking_score=h.get("ranking_score", 0.0),
+                adaptive_threshold=adaptive_threshold,
+                profile_name=profile_name,
+                action=h["action"],
+                category=h.get("category", ""),
+                category_overrides=category_overrides,
+                profile_ranking_bonus=ranking_bonus,
+            )
 
-            return build_metadata(
+        if len(top_highlights) == 0:
+            empty_metadata = build_metadata(
                 video_path=video_path,
                 highlights=[],
                 final_reel_path="",
@@ -367,6 +597,8 @@ class PipelineService:
                 reel_description="",
                 reel_hashtags=[]
             )
+            empty_metadata["adaptive_threshold"] = round(adaptive_threshold, 4)
+            return empty_metadata
         ProgressService.update(
             progress=70,
             status="Generating Reel"
@@ -498,6 +730,10 @@ class PipelineService:
         metadata[
             "transcription"
         ] = caption_text
+
+        metadata[
+            "adaptive_threshold"
+        ] = round(adaptive_threshold, 4)
 
         print(
             "Generated Title:",

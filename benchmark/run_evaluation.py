@@ -18,6 +18,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 from app.services.evaluation_service import EvaluationService
 
 
+def _fmt(val: object) -> str:
+    if val is None:
+        return "N/A"
+    if isinstance(val, float):
+        return f"{val:.4f}"
+    return str(val)
+
+
 def main() -> None:
     if len(sys.argv) < 2:
         print(__doc__)
@@ -48,14 +56,36 @@ def main() -> None:
     )
 
     m = report["metrics"]
+    matches = report["matches"]
+
+    fine_scan_pct_str = (
+        f"{m['fine_scan_pct']:.2f}%"
+        if m.get("fine_scan_pct") is not None
+        else "N/A"
+    )
+
     print()
     print("Results")
     print("-" * 44)
-    print(f"Precision      : {m['precision']:.4f}")
-    print(f"Recall         : {m['recall']:.4f}")
-    print(f"F1 Score       : {m['f1_score']:.4f}")
-    print(f"Avg Score      : {m['average_highlight_score']:.4f}")
-    print(f"Processing Time: {m['processing_time_seconds']}s")
+    print(f"Game Profile      : {_fmt(m.get('game_profile'))}")
+    print()
+    print(f"Expected Highlights : {m['expected_highlights']}")
+    print(f"Detected Highlights : {m['detected_highlights']}")
+    print(f"True Positives      : {m['true_positives_count']}")
+    print(f"False Positives     : {m['false_positives_count']}")
+    print(f"False Negatives     : {m['false_negatives_count']}")
+    print()
+    print(f"Precision         : {m['precision']:.4f}")
+    print(f"Recall            : {m['recall']:.4f}")
+    print(f"F1 Score          : {m['f1_score']:.4f}")
+    print(f"Avg Score         : {m['average_highlight_score']:.4f}")
+    print(f"Avg Confidence    : {m['average_confidence']:.4f}")
+    print(f"Processing Time   : {m['processing_time_seconds']}s")
+    print()
+    print(f"Frames Analyzed   : {m['frames_analyzed']}")
+    print(f"Fine Scan Frames  : {_fmt(m.get('fine_scan_frames'))}")
+    print(f"Fine Scan %       : {fine_scan_pct_str}")
+    print(f"Adaptive Threshold: {_fmt(m.get('adaptive_threshold'))}")
     print()
 
 

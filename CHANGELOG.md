@@ -4,6 +4,37 @@ All notable changes to AGC are documented in this file.
 
 ---
 
+## [v0.5.0-beta] — 2026-07-02
+
+### Added
+- **AI Explainability Engine** (`ExplainabilityService`) — every ranked highlight now carries a human-readable `explanation` block with per-signal scores, category multiplier, synergy multiplier, and a `reasons[]` array listing only the signals that fired
+- **Game Profile System** — per-game scoring weight overrides and category multipliers for SnowRunner, Valorant, Counter-Strike 2, Grand Theft Auto V, Rocket League, Forza, PUBG, and Minecraft; auto-detected from filename; default profile applied when no match is found
+- **Feedback System** — `/feedback` router and `FeedbackService` with star rating, thumbs up/down, and free-text comment per project; feedback persisted in SQLite
+- **PostHog Analytics integration** — frontend analytics instrumentation with `PostHogProvider`, `analytics.ts` service, and `instrumentation-client.ts`; disabled when env vars absent
+- **Dashboard v2** — rebuilt dashboard page under `frontend/app/dashboard/` with feedback card component (`FeedbackCard.tsx`)
+- **`FeedbackCard` component** — inline rating widget that appears after highlight generation
+- **SnowRunner benchmark definition** (`benchmark/snowrunner_benchmark.json`) — first real-video benchmark spec with expected timestamps and tolerance window
+- **AI Validation Report** (`docs/AI_VALIDATION_REPORT_v0.5.md`) — full seven-phase validation of the v2 AI engine covering benchmark metrics, explainability, game profiles, ranking, stability, and performance
+- **Game Profiles documentation** (`docs/game_profiles.md`)
+- **Feedback documentation** (`docs/feedback.md`)
+- **Analytics documentation** (`docs/analytics.md`)
+- **Private Beta tester guide** (`docs/PRIVATE_BETA.md`)
+
+### Changed
+- `pipeline_service.py` — attaches `ExplainabilityService.build()` output to each ranked highlight after ranking completes
+- `highlight_ranking_service.py` — updated ranking logic; diversity bonus confirmed active
+- `scoring/orchestrator.py` — wired to accept and apply game-profile weight overrides
+- `scoring/audio_scorer.py` — minor tuning aligned with profile system
+- `benchmark/run_evaluation.py` — enhanced evaluation runner supporting benchmark JSON specs and multi-format report output
+
+### Fixed
+- `evaluation_service.py` — `UnicodeEncodeError` on Windows when writing summary containing `→` (U+2192); all `open()` calls now use `encoding="utf-8"`
+
+### Removed
+- `backend/app/services/scoring_service.py` — replaced by the modular scorer architecture (`scoring/orchestrator.py`) introduced in v0.4.0
+
+---
+
 ## [v0.4.0-beta] — 2026-07-01
 
 ### Added

@@ -8,7 +8,7 @@ class AudioScorer:
         audio_map: dict,
         timestamp: int
     ) -> float:
-        return AudioService.get_audio_score(
+        return AudioService.get_windowed_audio_score(
             audio_map=audio_map,
             timestamp=timestamp
         )

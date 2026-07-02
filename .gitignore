@@ -26,9 +26,14 @@ logs/*.log
 backend/logs/
 backend/data/*.db
 
-# Benchmark results (runtime artifacts)
+# Benchmark runtime artifacts
 benchmark/results/*
 !benchmark/results/.gitkeep
+benchmark/outputs/
+benchmark/storage/
+
+# Test cache
+.pytest_cache/
 
 # Environment files
 .env

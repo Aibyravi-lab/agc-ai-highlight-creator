@@ -158,17 +158,24 @@ export function ProgressPanel({
           </div>
 
           <div className="flex items-end justify-between mb-3">
-            <div>
+            <div aria-live="polite" aria-atomic="true">
               <p className="text-white font-semibold">
                 {progressStatus || "Processing…"}
               </p>
             </div>
-            <p className="text-3xl font-bold text-blue-400 tabular-nums">
+            <p className="text-3xl font-bold text-blue-400 tabular-nums" aria-hidden="true">
               {progress}%
             </p>
           </div>
 
-          <div className="w-full bg-[#1a1d2e] rounded-full h-2 overflow-hidden">
+          <div
+            className="w-full bg-[#1a1d2e] rounded-full h-2 overflow-hidden"
+            role="progressbar"
+            aria-valuenow={progress}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={`Processing: ${progress}% complete`}
+          >
             <div
               className="bg-blue-500 h-2 rounded-full transition-all duration-300 ease-out"
               style={{ width: `${progress}%` }}
@@ -178,7 +185,7 @@ export function ProgressPanel({
           {startedTime && (
             <div className="mt-4 flex items-center gap-5 text-xs text-gray-600">
               <span>Started {startedTime}</span>
-              <span className="font-mono">Elapsed {formatElapsed(elapsed)}</span>
+              <span className="font-mono" aria-live="off">Elapsed {formatElapsed(elapsed)}</span>
             </div>
           )}
         </div>

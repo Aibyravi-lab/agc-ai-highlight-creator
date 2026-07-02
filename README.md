@@ -1,6 +1,6 @@
 # AGC — AI Gaming Highlight Creator
 
-**v0.4.0-beta** · Public Beta
+**v0.5.0-beta** · Public Beta
 
 > Transform long gameplay recordings into viral short-form clips — automatically.
 
@@ -244,7 +244,10 @@ _Screenshots will be added before the public launch._
 | AGC-030 | User-scoped history and job isolation | ✅ Complete |
 | AGC-034 | Production hardening (observability, security, nginx) | ✅ Complete |
 | AGC-035 | Beta release packaging | ✅ Complete |
-| AGC-036 | Public beta | Upcoming |
+| AGC-036 | Feedback system, analytics, game profiles | ✅ Complete |
+| AGC-102 | AI Explainability Engine and v0.5.0-beta validation | ✅ Complete |
+| AGC-103 | v0.5.0-beta release candidate | ✅ Complete |
+| AGC-104 | Rate limiting, email verification, password reset | Upcoming |
 
 ---
 

@@ -11,13 +11,18 @@ async function request(
   endpoint: string,
   options: RequestInit = {}
 ) {
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    cache: "no-store",
-    ...options,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${endpoint}`, {
+      cache: "no-store",
+      ...options,
+    });
+  } catch {
+    throw new Error("Unable to reach the server. Please try again.");
+  }
 
   if (!response.ok) {
-    let message = "Something went wrong.";
+    let message = "Something went wrong. Please try again.";
 
     try {
       const error = await response.json();
@@ -273,6 +278,34 @@ export async function getProjects() {
 
 export async function deleteProject(id: number) {
   return authedRequest(`/projects/${id}`, { method: "DELETE" }) as Promise<{
+    success: boolean;
+    message: string;
+  }>;
+}
+
+export async function submitFeedback(
+  body: import("../types/pipeline").SubmitFeedbackRequest
+) {
+  return authedRequest("/feedback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }) as Promise<{
+    success: boolean;
+    data: import("../types/pipeline").FeedbackItem;
+  }>;
+}
+
+export async function getFeedback() {
+  return authedRequest("/feedback") as Promise<{
+    success: boolean;
+    count: number;
+    data: import("../types/pipeline").FeedbackItem[];
+  }>;
+}
+
+export async function deleteFeedback(id: number) {
+  return authedRequest(`/feedback/${id}`, { method: "DELETE" }) as Promise<{
     success: boolean;
     message: string;
   }>;
