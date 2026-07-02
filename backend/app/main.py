@@ -32,7 +32,7 @@ from app.routers.feedback import router as feedback_router
 load_dotenv()
 
 print(
-    "🚀 AGC Startup Validation"
+    "AGC Startup Validation"
 )
 
 DatabaseService.initialize()
@@ -50,14 +50,14 @@ if (
     and not settings.HTTPS_ENABLED
 ):
     print(
-        "⚠️  WARNING: ENVIRONMENT=production but HTTPS_ENABLED is not set."
+        "WARNING: ENVIRONMENT=production but HTTPS_ENABLED is not set."
     )
     print(
-        "⚠️  Set HTTPS_ENABLED=true in .env and configure nginx TLS before public release."
+        "Set HTTPS_ENABLED=true in .env and configure nginx TLS before public release."
     )
 
 print(
-    "✅ Startup Validation Completed"
+    "Startup Validation Completed"
 )
 
 

@@ -1,4 +1,5 @@
 import subprocess
+import time
 from pathlib import Path
 
 from app.config.config import settings
@@ -106,6 +107,8 @@ class EditorService:
             str(output_path)
         ]
 
+        clip_start = time.perf_counter()
+
         try:
 
             result = subprocess.run(
@@ -128,11 +131,21 @@ class EditorService:
                 f"timestamp {timestamp}"
             )
 
+        clip_creation_seconds = (
+            time.perf_counter() - clip_start
+        )
+
+        thumbnail_start = time.perf_counter()
+
         thumbnail_path = (
             EditorService.create_thumbnail(
                 video_path=video_path,
                 timestamp=timestamp
             )
+        )
+
+        thumbnail_generation_seconds = (
+            time.perf_counter() - thumbnail_start
         )
 
         return {
@@ -147,6 +160,12 @@ class EditorService:
             timestamp,
 
             "duration":
-            duration
+            duration,
+
+            "clip_creation_seconds":
+            clip_creation_seconds,
+
+            "thumbnail_generation_seconds":
+            thumbnail_generation_seconds
 
         }

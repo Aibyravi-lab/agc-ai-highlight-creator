@@ -1,14 +1,21 @@
 import subprocess
+import time
 from pathlib import Path
 
 from app.config.config import settings
+from app.services.profiler_service import PipelineProfiler
+
+
 class CaptionService:
 
     @staticmethod
     def add_captions(
         video_path: str,
-        caption_text: str
+        caption_text: str,
+        profiler: PipelineProfiler | None = None
     ):
+
+        rendering_start = time.perf_counter()
 
         output_folder = Path(
             settings.HIGHLIGHT_FOLDER
@@ -48,11 +55,27 @@ class CaptionService:
             str(output_video)
         ]
 
+        if profiler is not None:
+            profiler.add(
+                "Caption Rendering",
+                time.perf_counter() - rendering_start
+            )
+
+        burn_in_start = time.perf_counter()
+
         result = subprocess.run(
             command,
             capture_output=True,
             text=True
         )
+
+        if profiler is not None:
+            profiler.add(
+                "Caption Burn-in (FFmpeg)",
+                time.perf_counter() - burn_in_start
+            )
+
+        export_start = time.perf_counter()
 
         if result.returncode != 0:
 
@@ -60,4 +83,12 @@ class CaptionService:
                 result.stderr
             )
 
-        return str(output_video)
+        output_path = str(output_video)
+
+        if profiler is not None:
+            profiler.add(
+                "Caption Export",
+                time.perf_counter() - export_start
+            )
+
+        return output_path

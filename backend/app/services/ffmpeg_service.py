@@ -56,5 +56,5 @@ class FFmpegService:
             )
 
         print(
-            "✅ FFmpeg Validation Passed"
+            "FFmpeg Validation Passed"
         )

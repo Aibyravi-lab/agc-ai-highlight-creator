@@ -68,6 +68,29 @@ class ResultExportService:
             metadata.get(
                 "stats",
                 {}
+            ),
+
+            "final_reel":
+            metadata.get(
+                "final_reel",
+                ""
+            ),
+
+            "vertical_reel":
+            metadata.get(
+                "vertical_reel",
+                ""
+            ),
+
+            "thumbnail":
+            metadata.get(
+                "thumbnail",
+                ""
+            ),
+
+            "result_json":
+            str(
+                output_file
             )
 
         }

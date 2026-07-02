@@ -169,7 +169,7 @@ class DatabaseService:
         connection.close()
 
         print(
-            "✅ SQLite Database Initialized"
+            "SQLite Database Initialized"
         )
 
     @classmethod

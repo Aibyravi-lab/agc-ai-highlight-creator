@@ -504,7 +504,7 @@ class JobService:
 
         for key in (
             "final_reel",
-            "vertical_video",
+            "vertical_reel",
             "thumbnail",
             "result_json",
             "captioned_reel"

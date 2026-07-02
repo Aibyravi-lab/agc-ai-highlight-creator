@@ -30,9 +30,11 @@ from app.services.progress_service import ProgressService
 from app.services.job_service import JobService
 from app.services.highlight_ranking_service import HighlightRankingService
 from app.services.project_service import ProjectService
+from app.services.logger_service import LoggerService
 from app.services.game_profiles.profile_registry import ProfileRegistry
 from app.services.game_profiles.base_profile import BaseProfile
 from app.services.explainability_service import ExplainabilityService
+from app.services.profiler_service import PipelineProfiler
 
 
 class PipelineService:
@@ -45,6 +47,7 @@ class PipelineService:
         user_id: int | None = None
     ):
         start_time = time.time()
+        profiler = PipelineProfiler()
 
         profile = ProfileRegistry.detect_profile(video_path)
         print(
@@ -76,11 +79,12 @@ class PipelineService:
             "Step 1: Extracting frames..."
         )
 
-        frames_data = (
-            FrameService.extract_frames(
-                video_path
+        with profiler.track("Frame Extraction"):
+            frames_data = (
+                FrameService.extract_frames(
+                    video_path
+                )
             )
-        )
 
         frames_folder = (
             frames_data["frame_location"]
@@ -94,7 +98,8 @@ class PipelineService:
                 user_id=user_id,
                 frames_data=frames_data,
                 start_time=start_time,
-                profile=profile
+                profile=profile,
+                profiler=profiler
             )
 
         finally:
@@ -109,7 +114,8 @@ class PipelineService:
         frames: list,
         frames_location: str,
         audio_map: dict,
-        is_silent: bool
+        is_silent: bool,
+        profiler: PipelineProfiler
     ) -> float:
         try:
             energy_scores: list[float] = []
@@ -130,17 +136,19 @@ class PipelineService:
                         f"{frames_location}/"
                         f"{frames[index - 1]['frame_name']}"
                     )
-                    motion_score = MotionScorer.score(
-                        previous_path,
-                        frame_path
-                    )
+                    with profiler.track("Motion Detection"):
+                        motion_score = MotionScorer.score(
+                            previous_path,
+                            frame_path
+                        )
 
                 audio_score = 0.0
                 if not is_silent:
-                    audio_score = AudioScorer.score(
-                        audio_map=audio_map,
-                        timestamp=frame["timestamp_second"]
-                    )
+                    with profiler.track("Audio Detection"):
+                        audio_score = AudioScorer.score(
+                            audio_map=audio_map,
+                            timestamp=frame["timestamp_second"]
+                        )
 
                 energy = (
                     motion_score * 0.60
@@ -189,17 +197,19 @@ class PipelineService:
         frame: dict,
         audio_map: dict,
         is_silent: bool,
-        profile: BaseProfile | None
+        profile: BaseProfile | None,
+        profiler: PipelineProfiler
     ) -> dict:
         frame_path = (
             f"{frames_location}/"
             f"{frame['frame_name']}"
         )
 
-        clip_result = ClipService.get_highlight_result(
-            frame_path,
-            profile
-        )
+        with profiler.track("CLIP Detection"):
+            clip_result = ClipService.get_highlight_result(
+                frame_path,
+                profile
+            )
 
         motion_score = 0.0
         scene_score = 0.0
@@ -210,33 +220,37 @@ class PipelineService:
                 f"{frames_location}/"
                 f"{frames[index - 1]['frame_name']}"
             )
-            motion_score = MotionScorer.score(
-                previous_frame,
-                frame_path
-            )
-            scene_score = SceneScorer.score(
-                current_frame_path=frame_path,
-                previous_frame_path=previous_frame
-            )
-            audio_score = AudioScorer.score(
-                audio_map=audio_map,
-                timestamp=frame["timestamp_second"]
-            )
+            with profiler.track("Motion Detection"):
+                motion_score = MotionScorer.score(
+                    previous_frame,
+                    frame_path
+                )
+            with profiler.track("Scene Detection"):
+                scene_score = SceneScorer.score(
+                    current_frame_path=frame_path,
+                    previous_frame_path=previous_frame
+                )
+            with profiler.track("Audio Detection"):
+                audio_score = AudioScorer.score(
+                    audio_map=audio_map,
+                    timestamp=frame["timestamp_second"]
+                )
 
-        clip_score = ClipScorer.score(clip_result)
-        duration_score = DurationScorer.score(clip_result["best_match"])
+        with profiler.track("Highlight Scoring"):
+            clip_score = ClipScorer.score(clip_result)
+            duration_score = DurationScorer.score(clip_result["best_match"])
 
-        weighted_score = ScoringOrchestrator.compute_weighted_score(
-            clip_score=clip_score,
-            motion_score=motion_score,
-            audio_score=audio_score,
-            scene_score=scene_score,
-            duration_score=duration_score,
-            action=clip_result["best_match"],
-            is_silent=is_silent,
-            weights=profile.scoring_weights if profile is not None else None,
-            category_overrides=profile.category_weight_overrides if profile is not None else None
-        )
+            weighted_score = ScoringOrchestrator.compute_weighted_score(
+                clip_score=clip_score,
+                motion_score=motion_score,
+                audio_score=audio_score,
+                scene_score=scene_score,
+                duration_score=duration_score,
+                action=clip_result["best_match"],
+                is_silent=is_silent,
+                weights=profile.scoring_weights if profile is not None else None,
+                category_overrides=profile.category_weight_overrides if profile is not None else None
+            )
 
         return {
             "clip_result": clip_result,
@@ -249,12 +263,17 @@ class PipelineService:
         }
 
     @classmethod
-    def _build_highlight_entry(
+    def _build_highlight_candidate(
         cls,
-        video_path: str,
         frame: dict,
         scores: dict
     ) -> dict:
+        """Lightweight highlight metadata — no FFmpeg work.
+
+        Clip/thumbnail generation is deferred until after merge,
+        dedup and ranking so FFmpeg only runs for surviving
+        highlights (see _finalize_highlight_clip).
+        """
         clip_result = scores["clip_result"]
         weighted_score = scores["weighted_score"]
 
@@ -262,10 +281,50 @@ class PipelineService:
             clip_result["best_match"]
         )
 
+        return {
+            "timestamp": frame["timestamp_second"],
+            "category": clip_result["category"],
+            "action": clip_result["best_match"],
+            "weighted_score": weighted_score,
+            "clip_score": scores["clip_score"],
+            "motion_score": scores["motion_score"],
+            "scene_score": scores["scene_score"],
+            "audio_score": scores["audio_score"],
+            "duration_score": scores["duration_score"],
+            "duration": clip_duration,
+            "reason": (
+                "CLIP + Motion + "
+                "Action Weight + "
+                "Thumbnail Rank"
+            ),
+        }
+
+    @classmethod
+    def _finalize_highlight_clip(
+        cls,
+        video_path: str,
+        highlight: dict,
+        profiler: PipelineProfiler
+    ) -> dict:
+        """Runs FFmpeg clip + thumbnail generation for a single
+        surviving (post-ranking) highlight and attaches the
+        resulting paths/scores onto it, exactly as
+        _build_highlight_entry used to do inline during scanning.
+        """
         created_clip = EditorService.create_clip(
             video_path=video_path,
-            timestamp=frame["timestamp_second"],
-            duration=clip_duration
+            timestamp=highlight["timestamp"],
+            duration=highlight["duration"]
+        )
+
+        profiler.add(
+            "Clip Extraction",
+            created_clip.get("clip_creation_seconds", 0.0)
+        )
+
+        profiler.add(
+            "Thumbnail Generation",
+            created_clip.get("thumbnail_generation_seconds", 0.0)
         )
 
         thumbnail_score = (
@@ -275,31 +334,16 @@ class PipelineService:
         )
 
         final_score = (
-            weighted_score * 0.90
+            highlight["weighted_score"] * 0.90
             + thumbnail_score * 0.10
         )
 
-        return {
-            "timestamp": frame["timestamp_second"],
-            "category": clip_result["category"],
-            "action": clip_result["best_match"],
-            "score": final_score,
-            "weighted_score": weighted_score,
-            "clip_score": scores["clip_score"],
-            "motion_score": scores["motion_score"],
-            "scene_score": scores["scene_score"],
-            "audio_score": scores["audio_score"],
-            "duration_score": scores["duration_score"],
-            "thumbnail_score": thumbnail_score,
-            "duration": clip_duration,
-            "reason": (
-                "CLIP + Motion + "
-                "Action Weight + "
-                "Thumbnail Rank"
-            ),
-            "clip_path": created_clip["clip_path"],
-            "thumbnail_path": created_clip["thumbnail_path"],
-        }
+        highlight["thumbnail_score"] = thumbnail_score
+        highlight["score"] = final_score
+        highlight["clip_path"] = created_clip["clip_path"]
+        highlight["thumbnail_path"] = created_clip["thumbnail_path"]
+
+        return highlight
 
     @classmethod
     def _merge_and_deduplicate(cls, highlights: list) -> list:
@@ -326,6 +370,7 @@ class PipelineService:
         user_id: int | None,
         frames_data: dict,
         start_time: float,
+        profiler: PipelineProfiler,
         profile: BaseProfile | None = None
     ):
 
@@ -344,11 +389,12 @@ class PipelineService:
             "CLIP + Motion..."
         )
 
-        audio_data = (
-            AudioService.build_audio_map(
-                video_path=video_path
+        with profiler.track("Audio Detection"):
+            audio_data = (
+                AudioService.build_audio_map(
+                    video_path=video_path
+                )
             )
-        )
 
         audio_map = audio_data["audio_map"]
         is_silent_video = audio_data["is_silent"]
@@ -362,7 +408,8 @@ class PipelineService:
                     frames=frames_data["frames"],
                     frames_location=frames_data["frame_location"],
                     audio_map=audio_map,
-                    is_silent=is_silent_video
+                    is_silent=is_silent_video,
+                    profiler=profiler
                 )
             )
         else:
@@ -409,7 +456,8 @@ class PipelineService:
                 frame=frame,
                 audio_map=audio_map,
                 is_silent=is_silent_video,
-                profile=profile
+                profile=profile,
+                profiler=profiler
             )
 
             clip_result = scores["clip_result"]
@@ -448,8 +496,7 @@ class PipelineService:
                     weighted_score
                 )
 
-                highlight = cls._build_highlight_entry(
-                    video_path=video_path,
+                highlight = cls._build_highlight_candidate(
                     frame=frame,
                     scores=scores
                 )
@@ -504,7 +551,8 @@ class PipelineService:
                 frame=frame,
                 audio_map=audio_map,
                 is_silent=is_silent_video,
-                profile=profile
+                profile=profile,
+                profiler=profiler
             )
 
             clip_result = scores["clip_result"]
@@ -530,8 +578,7 @@ class PipelineService:
                     frame["timestamp_second"],
                     weighted_score
                 )
-                highlight = cls._build_highlight_entry(
-                    video_path=video_path,
+                highlight = cls._build_highlight_candidate(
                     frame=frame,
                     scores=scores
                 )
@@ -543,25 +590,26 @@ class PipelineService:
         )
 
         # Merge and deduplicate
-        all_highlights = coarse_highlights + fine_highlights
-        highlights = cls._merge_and_deduplicate(all_highlights)
-        duplicates_removed = len(all_highlights) - len(highlights)
-        print(
-            f"[MERGE] Total before dedup: {len(all_highlights)}, "
-            f"After dedup: {len(highlights)}, "
-            f"Duplicates removed: {duplicates_removed}"
-        )
-
-        print(
-            "Applying highlight ranking..."
-        )
-
-        top_highlights = (
-            HighlightRankingService.rank(
-                highlights,
-                profile=profile
+        with profiler.track("Diversity Filtering"):
+            all_highlights = coarse_highlights + fine_highlights
+            highlights = cls._merge_and_deduplicate(all_highlights)
+            duplicates_removed = len(all_highlights) - len(highlights)
+            print(
+                f"[MERGE] Total before dedup: {len(all_highlights)}, "
+                f"After dedup: {len(highlights)}, "
+                f"Duplicates removed: {duplicates_removed}"
             )
-        )
+
+            print(
+                "Applying highlight ranking..."
+            )
+
+            top_highlights = (
+                HighlightRankingService.rank(
+                    highlights,
+                    profile=profile
+                )
+            )
 
         profile_name = profile.game_name if profile is not None else "Default"
         category_overrides = (
@@ -588,17 +636,27 @@ class PipelineService:
             )
 
         if len(top_highlights) == 0:
-            empty_metadata = build_metadata(
-                video_path=video_path,
-                highlights=[],
-                final_reel_path="",
-                vertical_reel_path="",
-                reel_title="",
-                reel_description="",
-                reel_hashtags=[]
-            )
-            empty_metadata["adaptive_threshold"] = round(adaptive_threshold, 4)
+            with profiler.track("Metadata Generation"):
+                empty_metadata = build_metadata(
+                    video_path=video_path,
+                    highlights=[],
+                    final_reel_path="",
+                    vertical_reel_path="",
+                    reel_title="",
+                    reel_description="",
+                    reel_hashtags=[]
+                )
+                empty_metadata["adaptive_threshold"] = round(adaptive_threshold, 4)
+            profiler.print_report()
             return empty_metadata
+
+        for highlight in top_highlights:
+            cls._finalize_highlight_clip(
+                video_path=video_path,
+                highlight=highlight,
+                profiler=profiler
+            )
+
         ProgressService.update(
             progress=70,
             status="Generating Reel"
@@ -639,6 +697,14 @@ class PipelineService:
                 clip_paths
             )
         )
+        profiler.add(
+            "Reel Generation",
+            final_reel.get("reel_generation_seconds", 0.0)
+        )
+        profiler.add(
+            "Vertical Reel Generation",
+            final_reel.get("vertical_reel_seconds", 0.0)
+        )
 
         reel_title = (
             TitleService.generate_title(
@@ -669,15 +735,17 @@ class PipelineService:
             WhisperService.transcribe_video(
                 final_reel[
                     "final_video"
-                ]
+                ],
+                profiler=profiler
             )
         )
 
-        caption_text = (
-            transcription[
-                "text"
-            ][:100]
-        )
+        with profiler.track("Whisper Post Processing"):
+            caption_text = (
+                transcription[
+                    "text"
+                ][:100]
+            )
         ProgressService.update(
             progress=95,
             status="Adding Captions"
@@ -697,30 +765,34 @@ class PipelineService:
                 video_path=final_reel[
                     "final_video"
                 ],
-                caption_text=caption_text
+                caption_text=caption_text,
+                profiler=profiler
             )
         )
 
-        metadata = build_metadata(
-            video_path=video_path,
-            highlights=top_highlights,
-            final_reel_path=final_reel[
-                "final_video"
-            ],
-            vertical_reel_path=final_reel[
-                "vertical_video"
-            ],
-            reel_title=reel_title,
-            reel_description=viral_package[
-                "description"
-            ],
-            reel_hashtags=viral_package[
-                "hashtags"
-            ]
-        )
-        print(
-            "WHISPER RESULT:",
-            transcription
+        with profiler.track("Metadata Generation"):
+            metadata = build_metadata(
+                video_path=video_path,
+                highlights=top_highlights,
+                final_reel_path=final_reel[
+                    "final_video"
+                ],
+                vertical_reel_path=final_reel[
+                    "vertical_video"
+                ],
+                reel_title=reel_title,
+                reel_description=viral_package[
+                    "description"
+                ],
+                reel_hashtags=viral_package[
+                    "hashtags"
+                ]
+            )
+        LoggerService.info(
+            "Whisper transcription complete: "
+            f"language={transcription.get('language')}, "
+            f"segments={len(transcription.get('segments', []))}, "
+            f"text_length={len(transcription.get('text', ''))}"
         )
 
         metadata[
@@ -761,9 +833,8 @@ class PipelineService:
             captioned_reel
         )
 
-        print(
-            "Transcription:",
-            caption_text
+        LoggerService.info(
+            f"Caption text applied: length={len(caption_text)}"
         )
 
         processing_time = (
@@ -790,58 +861,79 @@ class PipelineService:
             "stats"
         ] = stats
 
-        result_json = (
-            ResultExportService.save_result(
-                metadata
+        with profiler.track("Result Export"):
+            result_json = (
+                ResultExportService.save_result(
+                    metadata
+                )
             )
-        )
 
         metadata[
             "result_json"
         ] = result_json
 
         if user_id is not None:
-            HistoryService.add_history(
-                video_name=
-                Path(video_path).name,
+            try:
+                with profiler.track("History Registration"):
+                    HistoryService.add_history(
+                        video_name=
+                        Path(video_path).name,
 
-                reel_path=
-                final_reel[
-                    "final_video"
-                ],
+                        reel_path=
+                        final_reel[
+                            "final_video"
+                        ],
 
-                highlights_count=
-                len(top_highlights),
+                        highlights_count=
+                        len(top_highlights),
 
-                user_id=user_id
-            )
+                        user_id=user_id
+                    )
 
-            ProjectService.create_project(
-                user_id=user_id,
-                job_id=job_id,
-                original_video_name=
-                Path(video_path).name,
+                with profiler.track("Project Registration"):
+                    ProjectService.create_project(
+                        user_id=user_id,
+                        job_id=job_id,
+                        original_video_name=
+                        Path(video_path).name,
 
-                thumbnail_path=
-                metadata.get("thumbnail"),
+                        thumbnail_path=
+                        metadata.get("thumbnail"),
 
-                horizontal_reel_path=
-                metadata.get("final_reel"),
+                        horizontal_reel_path=
+                        metadata.get("final_reel"),
 
-                vertical_reel_path=
-                metadata.get(
-                    "vertical_reel"
-                ) or None,
+                        vertical_reel_path=
+                        metadata.get(
+                            "vertical_reel"
+                        ) or None,
 
-                metadata_json_path=
-                metadata.get(
-                    "result_json"
-                ) or None,
-            )
+                        metadata_json_path=
+                        metadata.get(
+                            "result_json"
+                        ) or None,
+                    )
 
-        metadata[
-            "history_saved"
-        ] = True
+                metadata[
+                    "history_saved"
+                ] = True
+
+            except Exception as registration_error:
+
+                LoggerService.error(
+                    f"Artifact registration failed: "
+                    f"{registration_error}",
+                    user_id=user_id,
+                    job_id=job_id
+                )
+
+                metadata[
+                    "history_saved"
+                ] = False
+        else:
+            metadata[
+                "history_saved"
+            ] = False
         ProgressService.update(
             progress=100,
             status="Completed"
@@ -856,5 +948,6 @@ class PipelineService:
             "Pipeline completed!"
         )
 
+        profiler.print_report()
 
         return metadata

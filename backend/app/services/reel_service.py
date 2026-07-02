@@ -1,4 +1,5 @@
 import subprocess
+import time
 from pathlib import Path
 
 from app.config.config import settings
@@ -118,6 +119,8 @@ class ReelService:
             str(final_video)
         ]
 
+        merge_start = time.perf_counter()
+
         result = subprocess.run(
             command,
             capture_output=True,
@@ -135,10 +138,20 @@ class ReelService:
                 f"{result.stderr}"
             )
 
+        reel_generation_seconds = (
+            time.perf_counter() - merge_start
+        )
+
+        vertical_start = time.perf_counter()
+
         vertical_video = (
             ReelService.create_vertical_reel(
                 str(final_video)
             )
+        )
+
+        vertical_reel_seconds = (
+            time.perf_counter() - vertical_start
         )
 
         return {
@@ -147,6 +160,12 @@ class ReelService:
             str(final_video),
 
             "vertical_video":
-            str(vertical_video)
+            str(vertical_video),
+
+            "reel_generation_seconds":
+            reel_generation_seconds,
+
+            "vertical_reel_seconds":
+            vertical_reel_seconds
 
         }
