@@ -198,7 +198,8 @@ class PipelineService:
         audio_map: dict,
         is_silent: bool,
         profile: BaseProfile | None,
-        profiler: PipelineProfiler
+        profiler: PipelineProfiler,
+        clip_text_embedding_cache: dict
     ) -> dict:
         frame_path = (
             f"{frames_location}/"
@@ -208,7 +209,8 @@ class PipelineService:
         with profiler.track("CLIP Detection"):
             clip_result = ClipService.get_highlight_result(
                 frame_path,
-                profile
+                profile,
+                clip_text_embedding_cache
             )
 
         motion_score = 0.0
@@ -425,6 +427,12 @@ class PipelineService:
         frames_location = frames_data["frame_location"]
         frames_analyzed = 0
 
+        # Per-job CLIP text embedding cache (AGC-038.5). Tokenizing,
+        # encoding and normalizing the prompt set is identical for
+        # every frame in this job; scoped to this call so it never
+        # leaks across jobs or users.
+        clip_text_embedding_cache: dict = {}
+
         # Pass 1 — Coarse Scan: every 5th frame
         print("[PASS 1] Coarse scan starting...")
         coarse_trigger = (
@@ -457,7 +465,8 @@ class PipelineService:
                 audio_map=audio_map,
                 is_silent=is_silent_video,
                 profile=profile,
-                profiler=profiler
+                profiler=profiler,
+                clip_text_embedding_cache=clip_text_embedding_cache
             )
 
             clip_result = scores["clip_result"]
@@ -552,7 +561,8 @@ class PipelineService:
                 audio_map=audio_map,
                 is_silent=is_silent_video,
                 profile=profile,
-                profiler=profiler
+                profiler=profiler,
+                clip_text_embedding_cache=clip_text_embedding_cache
             )
 
             clip_result = scores["clip_result"]
