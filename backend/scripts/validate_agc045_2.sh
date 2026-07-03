@@ -231,8 +231,14 @@ if [ -f "$TEST_VIDEO" ] && [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; then
   fi
 
   echo "  -- journalctl around restart (shutdown/startup log lines) --"
-  sudo journalctl -u "$SERVICE_NAME" --since "@$RESTART_TS" 2>/dev/null | \
-    grep -iE "shutdown initiated|Startup Validation Passed|Startup Validation Completed|WARNING|Reconciled" | sed 's/^/  /'
+  RESTART_LOG=$(sudo journalctl -u "$SERVICE_NAME" --since "@$RESTART_TS" 2>/dev/null)
+  echo "$RESTART_LOG" | grep -iE "shutdown initiated|Startup Validation Passed|Startup Validation Completed|WARNING|Reconciled" | sed 's/^/  /'
+
+  if echo "$RESTART_LOG" | grep -q "JWT_SECRET_KEY not set"; then
+    note_fail "JWT_SECRET_KEY warning reappeared on this restart — persistent secret is not being read consistently, sessions will not survive restarts"
+  else
+    echo "  OK: no JWT_SECRET_KEY warning on this restart"
+  fi
 
   if [ -n "$JID" ] && [ "$JID" != "null" ]; then
     echo "  polling job $JID for a terminal status (timeout ${SHUTDOWN_JOB_TIMEOUT}s)..."
