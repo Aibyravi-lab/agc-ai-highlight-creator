@@ -17,6 +17,7 @@ router = APIRouter(
 
 class PipelineError:
     MAX_CONCURRENT_JOBS = "MAX_CONCURRENT_JOBS"
+    SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE"
 
 
 @router.post("/process")
@@ -52,6 +53,19 @@ def start_video_processing(
 ):
 
     user_id = current_user["id"]
+
+    if not BackgroundJobService.is_accepting_jobs():
+
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": PipelineError.SERVICE_UNAVAILABLE,
+                "message": (
+                    "Server is shutting down. "
+                    "Please try again shortly."
+                )
+            }
+        )
 
     running = (
         JobService.get_running_job_count(

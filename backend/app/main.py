@@ -11,6 +11,7 @@ from app.services.database_service import DatabaseService
 from app.services.ffmpeg_service import FFmpegService
 from app.services.logger_service import LoggerService
 from app.services.job_storage_service import JobStorageService
+from app.services.background_job_service import BackgroundJobService
 
 from app.routers.upload import router as upload_router
 from app.routers.analysis import router as analysis_router
@@ -129,6 +130,17 @@ app.include_router(auth_router)
 app.include_router(files_router)
 app.include_router(projects_router)
 app.include_router(feedback_router)
+
+@app.on_event("shutdown")
+def on_shutdown():
+
+    LoggerService.info(
+        "AGC shutdown initiated: "
+        "no new jobs will be accepted"
+    )
+
+    BackgroundJobService.shutdown()
+
 
 @app.get("/")
 def home():

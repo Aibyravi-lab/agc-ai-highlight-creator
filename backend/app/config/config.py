@@ -118,6 +118,13 @@ class Settings(BaseSettings):
         )
     )
 
+    MAX_CONCURRENT_JOBS: int = int(
+        os.getenv(
+            "MAX_CONCURRENT_JOBS",
+            "4"
+        )
+    )
+
     TEMP_CLEANUP_HOURS: int = int(
         os.getenv(
             "TEMP_CLEANUP_HOURS",
