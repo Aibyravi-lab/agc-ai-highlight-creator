@@ -13,6 +13,26 @@ class DatabaseService:
     DB_PATH = DB_DIR / settings.DATABASE_NAME
 
     @classmethod
+    def _configure_connection(
+        cls,
+        connection: sqlite3.Connection
+    ) -> sqlite3.Connection:
+
+        connection.execute(
+            "PRAGMA journal_mode=WAL"
+        )
+
+        connection.execute(
+            "PRAGMA busy_timeout=10000"
+        )
+
+        connection.execute(
+            "PRAGMA foreign_keys=ON"
+        )
+
+        return connection
+
+    @classmethod
     def initialize(cls):
 
         cls.DB_DIR.mkdir(
@@ -20,8 +40,10 @@ class DatabaseService:
             exist_ok=True
         )
 
-        connection = sqlite3.connect(
-            cls.DB_PATH
+        connection = cls._configure_connection(
+            sqlite3.connect(
+                cls.DB_PATH
+            )
         )
 
         cursor = connection.cursor()
@@ -175,7 +197,9 @@ class DatabaseService:
     @classmethod
     def get_connection(cls):
 
-        return sqlite3.connect(
-            cls.DB_PATH,
-            check_same_thread=False
+        return cls._configure_connection(
+            sqlite3.connect(
+                cls.DB_PATH,
+                check_same_thread=False
+            )
         )
