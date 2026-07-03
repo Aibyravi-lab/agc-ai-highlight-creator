@@ -86,6 +86,22 @@ else
   note_fail "$APP_DIR/.env not found"
 fi
 
+echo "  -- network exposure: backend binds 0.0.0.0:8000, must be firewalled --"
+if command -v ufw >/dev/null 2>&1; then
+  UFW_STATUS=$(sudo ufw status 2>/dev/null)
+  if echo "$UFW_STATUS" | grep -q "^Status: active"; then
+    if echo "$UFW_STATUS" | grep -qE "8000/tcp\s+DENY"; then
+      echo "  OK: ufw active and port 8000/tcp is denied externally"
+    else
+      note_fail "ufw is active but no explicit DENY rule for 8000/tcp found — backend on 0.0.0.0:8000 may be publicly reachable"
+    fi
+  else
+    note_fail "ufw is not active — backend on 0.0.0.0:8000 is likely publicly reachable, bypassing nginx entirely"
+  fi
+else
+  echo "  WARN: ufw not found, cannot verify port 8000 is firewalled — check manually"
+fi
+
 echo
 echo "================================================================"
 echo "3. DISK USAGE"

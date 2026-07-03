@@ -1,10 +1,13 @@
 # AGC backend — systemd unit
-# Install: sudo cp backend/scripts/agc-backend.service /etc/systemd/system/agc-backend.service
-#          sudo systemctl daemon-reload
-#          sudo systemctl enable --now agc-backend
+# This mirrors the unit ACTUALLY RUNNING in production as of AGC-045.2
+# (confirmed 2026-07-03: venv at repo root, not backend/venv; Restart=always;
+# host 0.0.0.0). It exists here as a versioned reference/backup only —
+# do not install this over the live unit without an explicit decision to do so.
 #
-# Paths below match the deployment layout documented in docs/deploy.md
-# and the venv setup in section 6 of that guide.
+# Known deviation from docs/deploy.md: that guide documents `backend/venv`
+# and `--host 127.0.0.1`. Production instead uses a repo-root venv and binds
+# 0.0.0.0. The 0.0.0.0 bind is only safe if ufw is actively blocking external
+# access to 8000 (docs/deploy.md section 2) — validate_agc045_2.sh checks this.
 
 [Unit]
 Description=AGC AI Highlight Creator - FastAPI backend
@@ -14,8 +17,9 @@ After=network.target
 Type=simple
 User=agc
 WorkingDirectory=/home/agc/agc-ai-highlight-creator/backend
-ExecStart=/home/agc/agc-ai-highlight-creator/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
-Restart=on-failure
+Environment=PATH=/home/agc/agc-ai-highlight-creator/venv/bin
+ExecStart=/home/agc/agc-ai-highlight-creator/venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
 RestartSec=5
 KillSignal=SIGTERM
 TimeoutStopSec=30
