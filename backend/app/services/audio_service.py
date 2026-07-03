@@ -1,8 +1,7 @@
 import subprocess
 import wave
-from pathlib import Path
-from app.config.config import settings
 import numpy as np
+from app.services.job_storage_service import JobStorageService
 
 
 class AudioService:
@@ -42,18 +41,21 @@ class AudioService:
     @classmethod
     def build_audio_map(
         cls,
-        video_path: str
+        video_path: str,
+        job_id: str | None = None
     ):
 
         try:
 
-            temp_folder = (
-                Path(settings.OUTPUT_FOLDER)
+            resolved_job_id = (
+                JobStorageService.resolve_job_id(job_id)
             )
 
-            temp_folder.mkdir(
-                parents=True,
-                exist_ok=True
+            temp_folder = (
+                JobStorageService.subfolder(
+                    resolved_job_id,
+                    "audio"
+                )
             )
 
             wav_file = (

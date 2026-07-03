@@ -1,7 +1,6 @@
 import subprocess
-from pathlib import Path
 
-from app.config.config import settings
+from app.services.job_storage_service import JobStorageService
 class VideoEditorService:
 
 
@@ -9,17 +8,20 @@ class VideoEditorService:
     def create_clip(
         video_path: str,
         timestamp: int,
-        duration: int = 5
+        duration: int = 5,
+        job_id: str | None = None
     ):
 
         # Create output folder
-        output_folder = (
-            Path(settings.HIGHLIGHT_FOLDER)
+        resolved_job_id = (
+            JobStorageService.resolve_job_id(job_id)
         )
 
-        output_folder.mkdir(
-            parents=True,
-            exist_ok=True
+        output_folder = (
+            JobStorageService.subfolder(
+                resolved_job_id,
+                "clips"
+            )
         )
 
 

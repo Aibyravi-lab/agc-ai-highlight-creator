@@ -1,29 +1,31 @@
 import json
-from pathlib import Path
 
-from app.config.config import settings
+from app.services.job_storage_service import JobStorageService
 
 
 class ResultExportService:
 
-    OUTPUT_DIR = Path(
-        settings.RESULTS_FOLDER
-    )
-
     @classmethod
     def save_result(
         cls,
-        metadata: dict
+        metadata: dict,
+        job_id: str | None = None
     ):
 
-        cls.OUTPUT_DIR.mkdir(
-            parents=True,
-            exist_ok=True
+        resolved_job_id = (
+            JobStorageService.resolve_job_id(job_id)
+        )
+
+        output_dir = (
+            JobStorageService.subfolder(
+                resolved_job_id,
+                "results"
+            )
         )
 
         output_file = (
-            cls.OUTPUT_DIR /
-            "latest_result.json"
+            output_dir /
+            "result.json"
         )
 
         export_data = {

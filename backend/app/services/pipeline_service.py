@@ -28,6 +28,7 @@ from app.services.caption_service import CaptionService
 from app.services.audio_service import AudioService
 from app.services.progress_service import ProgressService
 from app.services.job_service import JobService
+from app.services.job_storage_service import JobStorageService
 from app.services.highlight_ranking_service import HighlightRankingService
 from app.services.project_service import ProjectService
 from app.services.logger_service import LoggerService
@@ -49,6 +50,10 @@ class PipelineService:
         start_time = time.time()
         profiler = PipelineProfiler()
 
+        storage_job_id = (
+            JobStorageService.resolve_job_id(job_id)
+        )
+
         profile = ProfileRegistry.detect_profile(video_path)
         print(
             f"Game profile detected: "
@@ -57,7 +62,8 @@ class PipelineService:
 
         ProgressService.update(
             progress=5,
-            status="Starting Pipeline"
+            status="Starting Pipeline",
+            job_id=storage_job_id
         )
         if job_id is not None:
             JobService.update_job(
@@ -67,7 +73,8 @@ class PipelineService:
             )
         ProgressService.update(
             progress=10,
-            status="Extracting Frames"
+            status="Extracting Frames",
+            job_id=storage_job_id
         )
         if job_id is not None:
             JobService.update_job(
@@ -82,7 +89,8 @@ class PipelineService:
         with profiler.track("Frame Extraction"):
             frames_data = (
                 FrameService.extract_frames(
-                    video_path
+                    video_path,
+                    job_id=storage_job_id
                 )
             )
 
@@ -95,6 +103,7 @@ class PipelineService:
             return cls._run_pipeline(
                 video_path=video_path,
                 job_id=job_id,
+                storage_job_id=storage_job_id,
                 user_id=user_id,
                 frames_data=frames_data,
                 start_time=start_time,
@@ -306,7 +315,8 @@ class PipelineService:
         cls,
         video_path: str,
         highlight: dict,
-        profiler: PipelineProfiler
+        profiler: PipelineProfiler,
+        storage_job_id: str
     ) -> dict:
         """Runs FFmpeg clip + thumbnail generation for a single
         surviving (post-ranking) highlight and attaches the
@@ -316,7 +326,8 @@ class PipelineService:
         created_clip = EditorService.create_clip(
             video_path=video_path,
             timestamp=highlight["timestamp"],
-            duration=highlight["duration"]
+            duration=highlight["duration"],
+            job_id=storage_job_id
         )
 
         profiler.add(
@@ -369,6 +380,7 @@ class PipelineService:
         cls,
         video_path: str,
         job_id: str | None,
+        storage_job_id: str,
         user_id: int | None,
         frames_data: dict,
         start_time: float,
@@ -378,7 +390,8 @@ class PipelineService:
 
         ProgressService.update(
             progress=35,
-            status="Detecting Highlights"
+            status="Detecting Highlights",
+            job_id=storage_job_id
         )
         if job_id is not None:
             JobService.update_job(
@@ -394,7 +407,8 @@ class PipelineService:
         with profiler.track("Audio Detection"):
             audio_data = (
                 AudioService.build_audio_map(
-                    video_path=video_path
+                    video_path=video_path,
+                    job_id=storage_job_id
                 )
             )
 
@@ -523,7 +537,8 @@ class PipelineService:
         # Pass 2 — Fine Scan: every frame in candidate windows
         ProgressService.update(
             progress=55,
-            status="Fine Scan"
+            status="Fine Scan",
+            job_id=storage_job_id
         )
         if job_id is not None:
             JobService.update_job(
@@ -664,12 +679,14 @@ class PipelineService:
             cls._finalize_highlight_clip(
                 video_path=video_path,
                 highlight=highlight,
-                profiler=profiler
+                profiler=profiler,
+                storage_job_id=storage_job_id
             )
 
         ProgressService.update(
             progress=70,
-            status="Generating Reel"
+            status="Generating Reel",
+            job_id=storage_job_id
         )
         if job_id is not None:
             JobService.update_job(
@@ -704,7 +721,8 @@ class PipelineService:
 
         final_reel = (
             ReelService.merge_clips(
-                clip_paths
+                clip_paths,
+                job_id=storage_job_id
             )
         )
         profiler.add(
@@ -729,7 +747,8 @@ class PipelineService:
         )
         ProgressService.update(
             progress=85,
-            status="Transcribing Audio"
+            status="Transcribing Audio",
+            job_id=storage_job_id
         )
         if job_id is not None:
             JobService.update_job(
@@ -758,7 +777,8 @@ class PipelineService:
             )
         ProgressService.update(
             progress=95,
-            status="Adding Captions"
+            status="Adding Captions",
+            job_id=storage_job_id
         )
         if job_id is not None:
             JobService.update_job(
@@ -776,7 +796,8 @@ class PipelineService:
                     "final_video"
                 ],
                 caption_text=caption_text,
-                profiler=profiler
+                profiler=profiler,
+                job_id=storage_job_id
             )
         )
 
@@ -874,7 +895,8 @@ class PipelineService:
         with profiler.track("Result Export"):
             result_json = (
                 ResultExportService.save_result(
-                    metadata
+                    metadata,
+                    job_id=storage_job_id
                 )
             )
 
@@ -946,7 +968,8 @@ class PipelineService:
             ] = False
         ProgressService.update(
             progress=100,
-            status="Completed"
+            status="Completed",
+            job_id=storage_job_id
         )
         if job_id is not None:
             JobService.update_job(

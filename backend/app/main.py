@@ -11,6 +11,7 @@ from app.config.config import settings
 from app.services.database_service import DatabaseService
 from app.services.ffmpeg_service import FFmpegService
 from app.services.logger_service import LoggerService
+from app.services.job_storage_service import JobStorageService
 
 from app.routers.upload import router as upload_router
 from app.routers.analysis import router as analysis_router
@@ -36,6 +37,8 @@ print(
 )
 
 DatabaseService.initialize()
+
+JobStorageService.initialize()
 
 FFmpegService.validate()
 

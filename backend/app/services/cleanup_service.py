@@ -18,6 +18,8 @@ class CleanupService:
 
         CleanupService.cleanup_thumbnails()
 
+        CleanupService.cleanup_old_jobs()
+
     @staticmethod
     def cleanup_uploads():
 
@@ -145,6 +147,48 @@ class CleanupService:
             LoggerService.error(
                 f"Temp folder cleanup failed: {error}"
             )
+
+    @staticmethod
+    def cleanup_old_jobs():
+
+        jobs_dir = Path(
+            settings.JOBS_FOLDER
+        )
+
+        if not jobs_dir.exists():
+            return
+
+        cutoff = (
+            datetime.now()
+            - timedelta(
+                hours=settings.TEMP_CLEANUP_HOURS
+            )
+        )
+
+        for job_folder in jobs_dir.iterdir():
+
+            if not job_folder.is_dir():
+                continue
+
+            modified = datetime.fromtimestamp(
+                job_folder.stat().st_mtime
+            )
+
+            if modified < cutoff:
+
+                try:
+
+                    shutil.rmtree(job_folder)
+
+                    LoggerService.info(
+                        f"Deleted old job folder: {job_folder}"
+                    )
+
+                except Exception as error:
+
+                    LoggerService.error(
+                        f"Job folder cleanup failed: {error}"
+                    )
 
     @staticmethod
     def cleanup_old_temp_folders():

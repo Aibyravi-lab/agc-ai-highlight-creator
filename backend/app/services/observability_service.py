@@ -141,20 +141,14 @@ class ObservabilityService:
 
         folders = [
             settings.UPLOAD_FOLDER,
-            settings.FRAME_FOLDER,
-            settings.THUMBNAIL_FOLDER,
-            settings.HIGHLIGHT_FOLDER,
+            settings.JOBS_FOLDER,
         ]
         return all(Path(f).exists() for f in folders)
 
     @classmethod
     def _check_output_folders(cls) -> bool:
 
-        folders = [
-            settings.OUTPUT_FOLDER,
-            settings.RESULTS_FOLDER,
-        ]
-        return all(Path(f).exists() for f in folders)
+        return Path(settings.JOBS_FOLDER).exists()
 
     @classmethod
     def _compute_avg_processing_time(

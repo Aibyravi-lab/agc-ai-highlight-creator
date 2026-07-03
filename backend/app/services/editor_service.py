@@ -1,23 +1,25 @@
 import subprocess
 import time
-from pathlib import Path
 
-from app.config.config import settings
+from app.services.job_storage_service import JobStorageService
 class EditorService:
 
     @staticmethod
     def create_thumbnail(
         video_path: str,
-        timestamp: int
+        timestamp: int,
+        job_id: str | None = None
     ):
 
-        thumbnail_folder = Path(
-            settings.THUMBNAIL_FOLDER
+        resolved_job_id = (
+            JobStorageService.resolve_job_id(job_id)
         )
 
-        thumbnail_folder.mkdir(
-            parents=True,
-            exist_ok=True
+        thumbnail_folder = (
+            JobStorageService.subfolder(
+                resolved_job_id,
+                "thumbnails"
+            )
         )
 
         thumbnail_path = (
@@ -65,16 +67,19 @@ class EditorService:
     def create_clip(
         video_path: str,
         timestamp: int,
-        duration: int
+        duration: int,
+        job_id: str | None = None
     ):
 
-        output_folder = Path(
-            settings.HIGHLIGHT_FOLDER
+        resolved_job_id = (
+            JobStorageService.resolve_job_id(job_id)
         )
 
-        output_folder.mkdir(
-            parents=True,
-            exist_ok=True
+        output_folder = (
+            JobStorageService.subfolder(
+                resolved_job_id,
+                "clips"
+            )
         )
 
         output_path = (
@@ -140,7 +145,8 @@ class EditorService:
         thumbnail_path = (
             EditorService.create_thumbnail(
                 video_path=video_path,
-                timestamp=timestamp
+                timestamp=timestamp,
+                job_id=resolved_job_id
             )
         )
 

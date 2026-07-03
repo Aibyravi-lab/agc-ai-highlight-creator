@@ -92,6 +92,11 @@ class Settings(BaseSettings):
         "outputs/results"
     )
 
+    JOBS_FOLDER: str = os.getenv(
+        "JOBS_FOLDER",
+        "storage/jobs"
+    )
+
     MAX_UPLOAD_SIZE: int = int(
         os.getenv(
             "MAX_UPLOAD_SIZE",

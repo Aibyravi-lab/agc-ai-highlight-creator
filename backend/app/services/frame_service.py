@@ -1,28 +1,24 @@
 import subprocess
-from pathlib import Path
-from datetime import datetime
-from app.config.config import settings
+from app.services.job_storage_service import JobStorageService
 
 
 class FrameService:
 
     @staticmethod
-    def extract_frames(video_path: str):
+    def extract_frames(
+        video_path: str,
+        job_id: str | None = None
+    ):
 
-        video_name = Path(video_path).stem
-
-        current_time = datetime.now().strftime(
-            "%Y%m%d_%H%M%S"
+        resolved_job_id = (
+            JobStorageService.resolve_job_id(job_id)
         )
 
         output_folder = (
-            Path(settings.FRAME_FOLDER)
-            / f"{video_name}_{current_time}"
-        )
-
-        output_folder.mkdir(
-            parents=True,
-            exist_ok=True
+            JobStorageService.subfolder(
+                resolved_job_id,
+                "frames"
+            )
         )
 
         output_pattern = str(

@@ -1,9 +1,8 @@
 import subprocess
 import time
-from pathlib import Path
 
-from app.config.config import settings
 from app.services.profiler_service import PipelineProfiler
+from app.services.job_storage_service import JobStorageService
 
 
 class CaptionService:
@@ -12,18 +11,21 @@ class CaptionService:
     def add_captions(
         video_path: str,
         caption_text: str,
-        profiler: PipelineProfiler | None = None
+        profiler: PipelineProfiler | None = None,
+        job_id: str | None = None
     ):
 
         rendering_start = time.perf_counter()
 
-        output_folder = Path(
-            settings.HIGHLIGHT_FOLDER
+        resolved_job_id = (
+            JobStorageService.resolve_job_id(job_id)
         )
 
-        output_folder.mkdir(
-            parents=True,
-            exist_ok=True
+        output_folder = (
+            JobStorageService.subfolder(
+                resolved_job_id,
+                "captions"
+            )
         )
 
         output_video = (

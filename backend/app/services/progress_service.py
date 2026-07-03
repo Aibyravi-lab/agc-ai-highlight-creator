@@ -1,29 +1,41 @@
 import json
-from pathlib import Path
 
-from app.config.config import settings
+from app.services.job_storage_service import JobStorageService
 
 
 class ProgressService:
 
-    PROGRESS_FILE = Path(
-        settings.PROGRESS_FILE
-    )
+    @classmethod
+    def _progress_file(
+        cls,
+        job_id: str | None
+    ):
+
+        resolved_job_id = (
+            JobStorageService.resolve_job_id(job_id)
+        )
+
+        output_dir = (
+            JobStorageService.subfolder(
+                resolved_job_id,
+                "results"
+            )
+        )
+
+        return output_dir / "progress.json"
 
     @classmethod
     def update(
         cls,
         progress: int,
-        status: str
+        status: str,
+        job_id: str | None = None
     ):
 
-        cls.PROGRESS_FILE.parent.mkdir(
-            parents=True,
-            exist_ok=True
-        )
+        progress_file = cls._progress_file(job_id)
 
         with open(
-            cls.PROGRESS_FILE,
+            progress_file,
             "w",
             encoding="utf-8"
         ) as file:
@@ -38,9 +50,14 @@ class ProgressService:
             )
 
     @classmethod
-    def get_progress(cls):
+    def get_progress(
+        cls,
+        job_id: str | None = None
+    ):
 
-        if not cls.PROGRESS_FILE.exists():
+        progress_file = cls._progress_file(job_id)
+
+        if not progress_file.exists():
 
             return {
                 "progress": 0,
@@ -48,7 +65,7 @@ class ProgressService:
             }
 
         with open(
-            cls.PROGRESS_FILE,
+            progress_file,
             "r",
             encoding="utf-8"
         ) as file:

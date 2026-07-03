@@ -2,16 +2,24 @@ import subprocess
 import time
 from pathlib import Path
 
-from app.config.config import settings
+from app.services.job_storage_service import JobStorageService
 class ReelService:
 
     @staticmethod
     def create_vertical_reel(
-        input_video: str
+        input_video: str,
+        job_id: str | None = None
     ):
 
-        output_folder = Path(
-            settings.HIGHLIGHT_FOLDER
+        resolved_job_id = (
+            JobStorageService.resolve_job_id(job_id)
+        )
+
+        output_folder = (
+            JobStorageService.subfolder(
+                resolved_job_id,
+                "reels"
+            )
         )
 
         vertical_video = (
@@ -59,16 +67,19 @@ class ReelService:
 
     @staticmethod
     def merge_clips(
-        clip_paths: list
+        clip_paths: list,
+        job_id: str | None = None
     ):
 
-        output_folder = Path(
-            settings.HIGHLIGHT_FOLDER
+        resolved_job_id = (
+            JobStorageService.resolve_job_id(job_id)
         )
 
-        output_folder.mkdir(
-            parents=True,
-            exist_ok=True
+        output_folder = (
+            JobStorageService.subfolder(
+                resolved_job_id,
+                "reels"
+            )
         )
 
         list_file = (
@@ -146,7 +157,8 @@ class ReelService:
 
         vertical_video = (
             ReelService.create_vertical_reel(
-                str(final_video)
+                str(final_video),
+                job_id=resolved_job_id
             )
         )
 
