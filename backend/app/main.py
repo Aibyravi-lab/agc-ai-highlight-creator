@@ -2,7 +2,6 @@ import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import Response
 from dotenv import load_dotenv
 
@@ -130,19 +129,6 @@ app.include_router(auth_router)
 app.include_router(files_router)
 app.include_router(projects_router)
 app.include_router(feedback_router)
-
-app.mount(
-    "/storage",
-    StaticFiles(directory="storage"),
-    name="storage"
-)
-
-app.mount(
-    "/outputs",
-    StaticFiles(directory="outputs"),
-    name="outputs"
-)
-
 
 @app.get("/")
 def home():

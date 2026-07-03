@@ -6,9 +6,8 @@ import {
   downloadVerticalReel,
   downloadThumbnail,
   downloadResultJson,
-  getReelUrl,
-  getClipUrl,
 } from "../services/api";
+import { useAuthedMediaUrl } from "../hooks/useAuthedMediaUrl";
 import type { ExtendedPipelineResult, HighlightItem } from "../types/pipeline";
 
 interface ResultPanelProps {
@@ -61,7 +60,21 @@ function DownloadButton({
   );
 }
 
+function HighlightClipPreview({ clipPath }: { clipPath?: string }) {
+  const clipUrl = useAuthedMediaUrl(clipPath);
+
+  if (!clipPath) return null;
+
+  return (
+    <video controls className="w-full max-h-[270px] rounded-md mb-3">
+      {clipUrl && <source src={clipUrl} type="video/mp4" />}
+    </video>
+  );
+}
+
 export function ResultPanel({ result }: ResultPanelProps) {
+  const reelUrl = useAuthedMediaUrl(result?.final_reel);
+
   if (!result) return null;
 
   const hasReel = !!result.final_reel;
@@ -89,7 +102,7 @@ export function ResultPanel({ result }: ResultPanelProps) {
               Preview
             </p>
             <video controls className="w-full max-h-[480px] rounded-lg">
-              <source src={getReelUrl(result.final_reel)} type="video/mp4" />
+              {reelUrl && <source src={reelUrl} type="video/mp4" />}
             </video>
           </div>
         )}
@@ -217,14 +230,7 @@ export function ResultPanel({ result }: ResultPanelProps) {
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">
                       Clip {index + 1}
                     </p>
-                    {highlight.clip_path && (
-                      <video controls className="w-full max-h-[270px] rounded-md mb-3">
-                        <source
-                          src={getClipUrl(highlight.clip_path)}
-                          type="video/mp4"
-                        />
-                      </video>
-                    )}
+                    <HighlightClipPreview clipPath={highlight.clip_path} />
                     <div className="space-y-1 text-sm text-gray-400">
                       <p>
                         <span className="text-gray-600">Timestamp</span>{" "}

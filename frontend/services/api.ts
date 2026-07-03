@@ -182,45 +182,18 @@ function normalizePathToUrl(path: string): string {
   return path.replaceAll("\\", "/");
 }
 
-export function getReelUrl(reelPath: string | undefined): string {
-  if (!reelPath) return "";
-  return `${API_BASE}/${normalizePathToUrl(reelPath)}`;
-}
-
-export function getVerticalReelUrl(verticalPath: string | undefined): string {
-  if (!verticalPath) return "";
-  return `${API_BASE}/${normalizePathToUrl(verticalPath)}`;
-}
-
-export function getThumbnailUrl(thumbnailPath: string | undefined): string {
-  if (!thumbnailPath) return "";
-  return `${API_BASE}/${normalizePathToUrl(thumbnailPath)}`;
-}
-
-export function getClipUrl(clipPath: string | undefined): string {
-  if (!clipPath) return "";
-  return `${API_BASE}/${normalizePathToUrl(clipPath)}`;
-}
-
-export function getResultJsonUrl(resultJsonPath: string | undefined): string {
-  if (!resultJsonPath) return "";
-  return `${API_BASE}/${normalizePathToUrl(resultJsonPath)}`;
-}
-
 /**
- * Download functions — fetch via the authenticated /files/ endpoint so the
- * server can verify ownership before serving.  Signatures are unchanged so
- * callers need no updates.
+ * File access — every stored file (reel, thumbnail, clip, result JSON) is
+ * served exclusively through the authenticated /files/ endpoint, which
+ * verifies ownership before returning the bytes. There is no unauthenticated
+ * static file access.
  */
 
 function filenameFromPath(path: string): string {
   return decodeURIComponent(path.split(/[\\/]/).pop() || "download");
 }
 
-async function authedBlobDownload(
-  relativePath: string,
-  filename: string
-): Promise<void> {
+async function fetchAuthedBlob(relativePath: string): Promise<Blob> {
   const normalized = normalizePathToUrl(relativePath);
   const response = await fetch(`${API_BASE}/files/${normalized}`, {
     headers: authHeaders(),
@@ -231,7 +204,14 @@ async function authedBlobDownload(
       response.status === 403 ? "Access denied" : "Download failed"
     );
   }
-  const blob = await response.blob();
+  return response.blob();
+}
+
+async function authedBlobDownload(
+  relativePath: string,
+  filename: string
+): Promise<void> {
+  const blob = await fetchAuthedBlob(relativePath);
   const objectUrl = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = objectUrl;
@@ -240,6 +220,18 @@ async function authedBlobDownload(
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(objectUrl);
+}
+
+/**
+ * Fetches a stored file via the authenticated /files/ endpoint and returns a
+ * local object URL suitable for <img>/<video> src attributes. Callers own
+ * the returned URL and must revoke it (URL.revokeObjectURL) once done.
+ */
+export async function fetchAuthedMediaUrl(
+  relativePath: string
+): Promise<string> {
+  const blob = await fetchAuthedBlob(relativePath);
+  return URL.createObjectURL(blob);
 }
 
 export async function downloadReel(reelPath: string | undefined): Promise<void> {

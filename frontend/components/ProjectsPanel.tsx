@@ -3,13 +3,12 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   getProjects,
-  getThumbnailUrl,
-  getReelUrl,
   downloadReel,
   downloadThumbnail,
   deleteProject,
 } from "../services/api";
 import { track } from "../services/analytics";
+import { useAuthedMediaUrl } from "../hooks/useAuthedMediaUrl";
 import type { ProjectItem } from "../types/pipeline";
 
 export function ProjectsPanel() {
@@ -81,8 +80,8 @@ function ProjectCard({ project, onDelete }: { project: ProjectItem; onDelete: ()
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteSuccess, setDeleteSuccess] = useState(false);
 
-  const thumbnailUrl = getThumbnailUrl(project.thumbnail_path ?? undefined);
-  const reelUrl = getReelUrl(project.horizontal_reel_path ?? undefined);
+  const thumbnailUrl = useAuthedMediaUrl(project.thumbnail_path);
+  const reelUrl = useAuthedMediaUrl(project.horizontal_reel_path);
   const hasReel = Boolean(project.horizontal_reel_path);
   const hasThumbnail = Boolean(project.thumbnail_path);
 
