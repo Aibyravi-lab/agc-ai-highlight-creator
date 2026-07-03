@@ -27,6 +27,9 @@ TEST_VIDEO="${TEST_VIDEO:-/home/agc/agc-ai-highlight-creator/backend/storage/upl
 DOMAIN="${DOMAIN:-highlightai.in}"
 API_DOMAIN="${API_DOMAIN:-api.highlightai.in}"
 RUN_CRASH_TEST="${RUN_CRASH_TEST:-no}"
+SHUTDOWN_POLL_INTERVAL="${SHUTDOWN_POLL_INTERVAL:-2}"
+SHUTDOWN_HEALTH_TIMEOUT="${SHUTDOWN_HEALTH_TIMEOUT:-30}"
+SHUTDOWN_JOB_TIMEOUT="${SHUTDOWN_JOB_TIMEOUT:-120}"
 STAMP=$(date +%s)
 
 command -v jq >/dev/null || { echo "jq is required"; exit 1; }
@@ -183,30 +186,57 @@ if [ -f "$TEST_VIDEO" ] && [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; then
   echo "  submitted job $JID"
 
   sleep 2
+  PRE_RESTART_PID=$(systemctl show -p MainPID --value "$SERVICE_NAME" 2>/dev/null)
   RESTART_TS=$(date +%s)
   sudo systemctl restart "$SERVICE_NAME"
 
-  echo "  waiting for backend to come back up..."
-  for i in $(seq 1 30); do
-    curl -sf "$BASE_URL/health" >/dev/null 2>&1 && break
-    sleep 1
+  echo "  waiting for backend to come back up with a new PID (timeout ${SHUTDOWN_HEALTH_TIMEOUT}s)..."
+  NEW_PID=""
+  BACKEND_UP=0
+  ELAPSED=0
+  while [ "$ELAPSED" -lt "$SHUTDOWN_HEALTH_TIMEOUT" ]; do
+    CURRENT_PID=$(systemctl show -p MainPID --value "$SERVICE_NAME" 2>/dev/null)
+    if curl -sf "$BASE_URL/health" >/dev/null 2>&1 \
+      && [ -n "$CURRENT_PID" ] && [ "$CURRENT_PID" != "0" ] \
+      && [ "$CURRENT_PID" != "$PRE_RESTART_PID" ]; then
+      NEW_PID="$CURRENT_PID"
+      BACKEND_UP=1
+      break
+    fi
+    sleep "$SHUTDOWN_POLL_INTERVAL"
+    ELAPSED=$((ELAPSED + SHUTDOWN_POLL_INTERVAL))
   done
-  curl -sf "$BASE_URL/health" >/dev/null 2>&1 && echo "  OK: backend healthy after restart" || note_fail "backend did not become healthy after restart"
+
+  if [ "$BACKEND_UP" -eq 1 ]; then
+    echo "  OK: backend healthy after restart (PID $PRE_RESTART_PID -> $NEW_PID)"
+  else
+    note_fail "backend did not become healthy with a new PID within ${SHUTDOWN_HEALTH_TIMEOUT}s (PID stuck at $PRE_RESTART_PID) — restart may not have taken effect"
+  fi
 
   echo "  -- journalctl around restart (shutdown/startup log lines) --"
   sudo journalctl -u "$SERVICE_NAME" --since "@$RESTART_TS" 2>/dev/null | \
     grep -iE "shutdown initiated|Startup Validation Passed|Startup Validation Completed|WARNING|Reconciled" | sed 's/^/  /'
 
   if [ -n "$JID" ] && [ "$JID" != "null" ]; then
-    sleep 3
-    FINAL_STATUS=$(curl -sf "$BASE_URL/pipeline/job/$JID" -H "Authorization: Bearer $TOKEN" | jq -r '.data.status')
-    echo "  job status after graceful restart: $FINAL_STATUS"
+    echo "  polling job $JID for a terminal status (timeout ${SHUTDOWN_JOB_TIMEOUT}s)..."
+    FINAL_STATUS=""
+    ELAPSED=0
+    while [ "$ELAPSED" -lt "$SHUTDOWN_JOB_TIMEOUT" ]; do
+      FINAL_STATUS=$(curl -sf "$BASE_URL/pipeline/job/$JID" -H "Authorization: Bearer $TOKEN" 2>/dev/null | jq -r '.data.status' 2>/dev/null)
+      if [ "$FINAL_STATUS" = "completed" ] || [ "$FINAL_STATUS" = "failed" ]; then
+        break
+      fi
+      sleep "$SHUTDOWN_POLL_INTERVAL"
+      ELAPSED=$((ELAPSED + SHUTDOWN_POLL_INTERVAL))
+    done
+
+    echo "  job status after graceful restart: $FINAL_STATUS (after ${ELAPSED}s)"
     if [ "$FINAL_STATUS" = "completed" ]; then
       echo "  OK: in-flight job completed cleanly across a graceful restart"
     elif [ "$FINAL_STATUS" = "failed" ]; then
       note_fail "job was cut off by restart instead of draining gracefully (status=failed) — check TimeoutStopSec vs job duration"
     else
-      echo "  WARN: job still $FINAL_STATUS, may need more time — re-check manually"
+      note_fail "job did not reach a terminal state within ${SHUTDOWN_JOB_TIMEOUT}s (status=$FINAL_STATUS) — investigate a genuinely stuck job or raise SHUTDOWN_JOB_TIMEOUT"
     fi
   fi
 else
