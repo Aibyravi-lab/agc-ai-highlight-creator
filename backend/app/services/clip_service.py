@@ -1,3 +1,5 @@
+import threading
+
 from transformers import CLIPProcessor, CLIPModel
 from PIL import Image
 import torch
@@ -14,6 +16,13 @@ class ClipService:
     processor = CLIPProcessor.from_pretrained(
         "openai/clip-vit-base-patch32"
     )
+
+    # The model/processor above are shared singletons used by every
+    # background job worker thread. Concurrent forward passes on the
+    # same instance race on internal buffers (observed in production
+    # as a bare Linear-layer repr surfacing as the job error), so all
+    # inference through them is serialized here.
+    _inference_lock = threading.Lock()
 
     @classmethod
     def get_all_prompts(
@@ -98,35 +107,37 @@ class ClipService:
 
         ]
 
-        text_embeds = cls._get_text_embeddings(
-            prompt_texts,
-            text_embedding_cache
-        )
+        with cls._inference_lock:
 
-        image_inputs = cls.processor(
-            images=image,
-            return_tensors="pt"
-        )
-
-        with torch.no_grad():
-            image_outputs = cls.model.get_image_features(
-                **image_inputs
+            text_embeds = cls._get_text_embeddings(
+                prompt_texts,
+                text_embedding_cache
             )
 
-        image_embeds = cls._l2_normalize(
-            image_outputs.pooler_output
-        )
+            image_inputs = cls.processor(
+                images=image,
+                return_tensors="pt"
+            )
 
-        with torch.no_grad():
-            logits_per_text = (
-                torch.matmul(
-                    text_embeds,
-                    image_embeds.t()
+            with torch.no_grad():
+                image_outputs = cls.model.get_image_features(
+                    **image_inputs
                 )
-                * cls.model.logit_scale.exp()
+
+            image_embeds = cls._l2_normalize(
+                image_outputs.pooler_output
             )
 
-            logits_per_image = logits_per_text.t()
+            with torch.no_grad():
+                logits_per_text = (
+                    torch.matmul(
+                        text_embeds,
+                        image_embeds.t()
+                    )
+                    * cls.model.logit_scale.exp()
+                )
+
+                logits_per_image = logits_per_text.t()
 
         scores = (
             logits_per_image
