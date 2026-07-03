@@ -467,6 +467,41 @@ class JobService:
         return False
 
     @classmethod
+    def reconcile_interrupted_jobs(cls):
+
+        connection = (
+            DatabaseService.get_connection()
+        )
+
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            UPDATE jobs
+            SET
+                status = ?,
+                message = ?,
+                error = ?,
+                completed_at = ?
+            WHERE status IN ('pending', 'processing')
+            """,
+            (
+                "failed",
+                "Failed",
+                "Interrupted by server restart",
+                datetime.utcnow()
+                .isoformat()
+            )
+        )
+
+        reconciled = cursor.rowcount
+
+        connection.commit()
+        connection.close()
+
+        return reconciled
+
+    @classmethod
     def get_running_job_count(
         cls,
         user_id: int

@@ -1,0 +1,274 @@
+#!/usr/bin/env bash
+# AGC-045.2 production validation — Deployment Hardening
+# Run this ON THE VPS (agc-vps):
+#   ssh agc-vps
+#   sudo bash /home/agc/agc-ai-highlight-creator/backend/scripts/validate_agc045_2.sh
+#
+# Scope: systemd services, restart recovery, graceful shutdown, nginx routing,
+# health endpoints, permissions, disk usage, log rotation, startup behavior.
+# Does NOT repeat AGC-045.1 (worker pool / concurrent inference).
+#
+# Two tiers of test:
+#   - Safe checks (systemd state, permissions, disk usage, nginx, health,
+#     graceful shutdown + startup behavior via a normal `systemctl restart`)
+#     run by default.
+#   - The crash-recovery test forcibly `kill -9`s the live backend process to
+#     prove restart recovery works. It briefly interrupts real traffic and is
+#     gated behind RUN_CRASH_TEST=yes — it will NOT run unless you opt in.
+
+set -uo pipefail
+
+BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
+SERVICE_NAME="${SERVICE_NAME:-agc-backend}"
+UNIT_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
+REPO_UNIT="${REPO_UNIT:-/home/agc/agc-ai-highlight-creator/backend/scripts/agc-backend.service}"
+APP_DIR="${APP_DIR:-/home/agc/agc-ai-highlight-creator/backend}"
+TEST_VIDEO="${TEST_VIDEO:-/home/agc/agc-ai-highlight-creator/backend/storage/uploads/76a3a7b3_valid_87d52c22.mp4}"
+DOMAIN="${DOMAIN:-highlightai.in}"
+API_DOMAIN="${API_DOMAIN:-api.highlightai.in}"
+RUN_CRASH_TEST="${RUN_CRASH_TEST:-no}"
+STAMP=$(date +%s)
+
+command -v jq >/dev/null || { echo "jq is required"; exit 1; }
+
+FAILS=0
+note_fail() { echo "  FAIL: $1"; FAILS=$((FAILS+1)); }
+
+echo "================================================================"
+echo "1. SYSTEMD SERVICE"
+echo "================================================================"
+if [ -f "$UNIT_PATH" ]; then
+  echo "  unit file present: $UNIT_PATH"
+  if [ -f "$REPO_UNIT" ]; then
+    if diff -q "$UNIT_PATH" "$REPO_UNIT" >/dev/null 2>&1; then
+      echo "  OK: installed unit matches repo copy ($REPO_UNIT)"
+    else
+      note_fail "installed unit differs from repo copy — run: sudo diff $UNIT_PATH $REPO_UNIT"
+    fi
+  else
+    echo "  WARN: repo unit not found at $REPO_UNIT, skipping diff"
+  fi
+else
+  note_fail "$UNIT_PATH not found — service is not installed from the repo unit"
+fi
+
+systemctl is-enabled "$SERVICE_NAME" >/dev/null 2>&1 && echo "  OK: enabled (survives reboot)" || note_fail "$SERVICE_NAME not enabled"
+systemctl is-active "$SERVICE_NAME" >/dev/null 2>&1 && echo "  OK: active" || note_fail "$SERVICE_NAME not active"
+
+echo
+echo "================================================================"
+echo "2. PERMISSIONS"
+echo "================================================================"
+for d in "$APP_DIR/storage/uploads" "$APP_DIR/storage/jobs" "$APP_DIR/logs"; do
+  if [ -d "$d" ]; then
+    PERMS=$(stat -c "%U:%G %a" "$d")
+    echo "  $d -> $PERMS"
+    MODE=$(stat -c "%a" "$d")
+    if [ "${MODE: -1}" = "7" ] || [ "${MODE: -1}" = "6" ] || [ "${MODE: -1}" = "2" ]; then
+      note_fail "$d is world-writable (mode $MODE)"
+    fi
+  else
+    echo "  $d does not exist yet (not necessarily a problem pre-first-run)"
+  fi
+done
+
+if [ -f "$APP_DIR/.env" ]; then
+  ENV_PERMS=$(stat -c "%U:%G %a" "$APP_DIR/.env")
+  echo "  $APP_DIR/.env -> $ENV_PERMS"
+  ENV_MODE=$(stat -c "%a" "$APP_DIR/.env")
+  OTHER_BIT="${ENV_MODE: -1}"
+  if [ "$OTHER_BIT" != "0" ]; then
+    note_fail ".env is readable by 'other' (mode $ENV_MODE) — should be 600 or 640"
+  else
+    echo "  OK: .env not world-readable"
+  fi
+else
+  note_fail "$APP_DIR/.env not found"
+fi
+
+echo
+echo "================================================================"
+echo "3. DISK USAGE"
+echo "================================================================"
+df -h "$APP_DIR" 2>/dev/null
+echo "  -- directory sizes --"
+for d in "$APP_DIR/storage/uploads" "$APP_DIR/storage/jobs" "$APP_DIR/storage/frames" "$APP_DIR/storage/thumbnails" "$APP_DIR/logs"; do
+  [ -d "$d" ] && du -sh "$d" 2>/dev/null
+done
+
+if [ -f "$APP_DIR/logs/agc.log" ]; then
+  LOG_SIZE_MB=$(du -m "$APP_DIR/logs/agc.log" | cut -f1)
+  echo "  logs/agc.log size: ${LOG_SIZE_MB}MB (no log rotation configured yet — flag only, not a hard fail)"
+  if [ "$LOG_SIZE_MB" -gt 500 ]; then
+    note_fail "logs/agc.log is ${LOG_SIZE_MB}MB with no rotation in place — this needs addressing, not just flagging"
+  fi
+fi
+
+MOUNT_USE=$(df -h "$APP_DIR" | tail -1 | awk '{print $5}' | tr -d '%')
+if [ "$MOUNT_USE" -ge 85 ]; then
+  note_fail "disk usage on $APP_DIR's mount is ${MOUNT_USE}% — approaching capacity"
+else
+  echo "  OK: disk usage at ${MOUNT_USE}%"
+fi
+
+echo
+echo "================================================================"
+echo "4. NGINX ROUTING"
+echo "================================================================"
+sudo nginx -t 2>&1 | sed 's/^/  /'
+echo "  -- checklist from docs/deploy.md section 8 --"
+check_status() {
+  local desc="$1" url="$2" expect="$3"
+  local code
+  code=$(curl -s -o /dev/null -w "%{http_code}" "$url")
+  if [ "$code" = "$expect" ]; then
+    echo "  OK: $desc -> $code"
+  else
+    note_fail "$desc -> got $code, expected $expect ($url)"
+  fi
+}
+check_status "https://$DOMAIN"          "https://$DOMAIN"          "200"
+check_status "https://www.$DOMAIN"      "https://www.$DOMAIN"      "301"
+check_status "https://$API_DOMAIN/health" "https://$API_DOMAIN/health" "200"
+check_status "http://$DOMAIN (redirect)"  "http://$DOMAIN"           "301"
+check_status "http://$API_DOMAIN (redirect)" "http://$API_DOMAIN"    "301"
+
+echo
+echo "================================================================"
+echo "5. HEALTH ENDPOINTS"
+echo "================================================================"
+curl -sf "$BASE_URL/health" | jq . || note_fail "/health did not return 200"
+curl -sf "$BASE_URL/ready"  | jq . || note_fail "/ready did not return 200"
+curl -sf "$BASE_URL/metrics" | jq . || note_fail "/metrics did not return 200"
+
+echo
+echo "================================================================"
+echo "6. GRACEFUL SHUTDOWN + STARTUP BEHAVIOR (via systemctl restart)"
+echo "================================================================"
+echo "  Submitting a short job, then issuing a normal 'systemctl restart'"
+echo "  (SIGTERM, not kill -9) — job should be allowed to finish before"
+echo "  the old process exits, and fresh startup logs should follow."
+
+EMAIL="agc045-2-val-${STAMP}@example.com"
+REG_RESP=$(curl -sf -X POST "$BASE_URL/auth/register" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"val-shutdown\",\"email\":\"$EMAIL\",\"password\":\"ValidatePass123\"}")
+TOKEN=$(echo "$REG_RESP" | jq -r .access_token)
+
+if [ -f "$TEST_VIDEO" ] && [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; then
+  UPLOAD_RESP=$(curl -sf -X POST "$BASE_URL/upload/" \
+    -H "Authorization: Bearer $TOKEN" \
+    -F "file=@${TEST_VIDEO};filename=val_shutdown_${STAMP}.mp4")
+  VPATH=$(echo "$UPLOAD_RESP" | jq -r .location)
+
+  START_RESP=$(curl -s -X POST "$BASE_URL/pipeline/start?video_path=${VPATH}" \
+    -H "Authorization: Bearer $TOKEN")
+  JID=$(echo "$START_RESP" | jq -r .job_id)
+  echo "  submitted job $JID"
+
+  sleep 2
+  RESTART_TS=$(date +%s)
+  sudo systemctl restart "$SERVICE_NAME"
+
+  echo "  waiting for backend to come back up..."
+  for i in $(seq 1 30); do
+    curl -sf "$BASE_URL/health" >/dev/null 2>&1 && break
+    sleep 1
+  done
+  curl -sf "$BASE_URL/health" >/dev/null 2>&1 && echo "  OK: backend healthy after restart" || note_fail "backend did not become healthy after restart"
+
+  echo "  -- journalctl around restart (shutdown/startup log lines) --"
+  sudo journalctl -u "$SERVICE_NAME" --since "@$RESTART_TS" 2>/dev/null | \
+    grep -iE "shutdown initiated|Startup Validation Passed|Startup Validation Completed|WARNING|Reconciled" | sed 's/^/  /'
+
+  if [ -n "$JID" ] && [ "$JID" != "null" ]; then
+    sleep 3
+    FINAL_STATUS=$(curl -sf "$BASE_URL/pipeline/job/$JID" -H "Authorization: Bearer $TOKEN" | jq -r '.data.status')
+    echo "  job status after graceful restart: $FINAL_STATUS"
+    if [ "$FINAL_STATUS" = "completed" ]; then
+      echo "  OK: in-flight job completed cleanly across a graceful restart"
+    elif [ "$FINAL_STATUS" = "failed" ]; then
+      note_fail "job was cut off by restart instead of draining gracefully (status=failed) — check TimeoutStopSec vs job duration"
+    else
+      echo "  WARN: job still $FINAL_STATUS, may need more time — re-check manually"
+    fi
+  fi
+else
+  echo "  SKIPPED: test video or registration unavailable"
+fi
+
+echo
+echo "================================================================"
+echo "7. RESTART RECOVERY (crash simulation) — opt-in"
+echo "================================================================"
+if [ "$RUN_CRASH_TEST" != "yes" ]; then
+  echo "  SKIPPED: set RUN_CRASH_TEST=yes to run this. It force-kills the"
+  echo "  live backend process (kill -9) to prove systemd + job"
+  echo "  reconciliation recover cleanly. This briefly interrupts real"
+  echo "  traffic — only run it with awareness of that impact."
+else
+  EMAIL2="agc045-2-crash-${STAMP}@example.com"
+  REG2=$(curl -sf -X POST "$BASE_URL/auth/register" \
+    -H "Content-Type: application/json" \
+    -d "{\"name\":\"val-crash\",\"email\":\"$EMAIL2\",\"password\":\"ValidatePass123\"}")
+  TOKEN2=$(echo "$REG2" | jq -r .access_token)
+
+  UPLOAD2=$(curl -sf -X POST "$BASE_URL/upload/" \
+    -H "Authorization: Bearer $TOKEN2" \
+    -F "file=@${TEST_VIDEO};filename=val_crash_${STAMP}.mp4")
+  VPATH2=$(echo "$UPLOAD2" | jq -r .location)
+
+  START2=$(curl -s -X POST "$BASE_URL/pipeline/start?video_path=${VPATH2}" \
+    -H "Authorization: Bearer $TOKEN2")
+  JID2=$(echo "$START2" | jq -r .job_id)
+  echo "  submitted job $JID2, killing process in 1s..."
+  sleep 1
+
+  MAIN_PID=$(systemctl show -p MainPID --value "$SERVICE_NAME")
+  if [ -n "$MAIN_PID" ] && [ "$MAIN_PID" != "0" ]; then
+    sudo kill -9 "$MAIN_PID"
+    echo "  sent kill -9 to PID $MAIN_PID"
+  else
+    note_fail "could not resolve MainPID for $SERVICE_NAME"
+  fi
+
+  echo "  waiting for systemd to auto-restart (Restart=on-failure)..."
+  for i in $(seq 1 30); do
+    curl -sf "$BASE_URL/health" >/dev/null 2>&1 && break
+    sleep 1
+  done
+  if curl -sf "$BASE_URL/health" >/dev/null 2>&1; then
+    echo "  OK: backend recovered after crash"
+  else
+    note_fail "backend did not recover after kill -9 within 30s"
+  fi
+
+  sleep 2
+  RECONCILED_STATUS=$(curl -sf "$BASE_URL/pipeline/job/$JID2" -H "Authorization: Bearer $TOKEN2" | jq -r '.data.status')
+  RECONCILED_ERROR=$(curl -sf "$BASE_URL/pipeline/job/$JID2" -H "Authorization: Bearer $TOKEN2" | jq -r '.data.error')
+  echo "  killed job status: $RECONCILED_STATUS (error: $RECONCILED_ERROR)"
+  if [ "$RECONCILED_STATUS" = "failed" ]; then
+    echo "  OK: orphaned job was reconciled to failed, not left stuck"
+  else
+    note_fail "killed job is still '$RECONCILED_STATUS' — orphan reconciliation did not run"
+  fi
+
+  RETRY_RESP=$(curl -s -X POST "$BASE_URL/pipeline/start?video_path=${VPATH2}" \
+    -H "Authorization: Bearer $TOKEN2")
+  RETRY_JID=$(echo "$RETRY_RESP" | jq -r '.job_id // empty')
+  if [ -n "$RETRY_JID" ]; then
+    echo "  OK: user can submit a new job after crash (no permanent slot leak)"
+  else
+    note_fail "user could not submit a new job after crash: $RETRY_RESP"
+  fi
+fi
+
+echo
+echo "================================================================"
+echo "SUMMARY"
+echo "================================================================"
+if [ "$FAILS" -eq 0 ]; then
+  echo "RESULT: PASS (0 failures)"
+else
+  echo "RESULT: FAIL ($FAILS failure(s) above)"
+fi

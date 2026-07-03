@@ -1,0 +1,24 @@
+# AGC backend — systemd unit
+# Install: sudo cp backend/scripts/agc-backend.service /etc/systemd/system/agc-backend.service
+#          sudo systemctl daemon-reload
+#          sudo systemctl enable --now agc-backend
+#
+# Paths below match the deployment layout documented in docs/deploy.md
+# and the venv setup in section 6 of that guide.
+
+[Unit]
+Description=AGC AI Highlight Creator - FastAPI backend
+After=network.target
+
+[Service]
+Type=simple
+User=agc
+WorkingDirectory=/home/agc/agc-ai-highlight-creator/backend
+ExecStart=/home/agc/agc-ai-highlight-creator/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

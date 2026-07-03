@@ -12,6 +12,7 @@ from app.services.ffmpeg_service import FFmpegService
 from app.services.logger_service import LoggerService
 from app.services.job_storage_service import JobStorageService
 from app.services.background_job_service import BackgroundJobService
+from app.services.job_service import JobService
 
 from app.routers.upload import router as upload_router
 from app.routers.analysis import router as analysis_router
@@ -37,6 +38,14 @@ print(
 )
 
 DatabaseService.initialize()
+
+_reconciled_jobs = JobService.reconcile_interrupted_jobs()
+
+if _reconciled_jobs:
+    print(
+        f"Reconciled {_reconciled_jobs} job(s) "
+        "interrupted by a previous server restart"
+    )
 
 JobStorageService.initialize()
 
