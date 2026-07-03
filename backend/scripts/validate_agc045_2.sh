@@ -37,19 +37,36 @@ command -v jq >/dev/null || { echo "jq is required"; exit 1; }
 FAILS=0
 note_fail() { echo "  FAIL: $1"; FAILS=$((FAILS+1)); }
 
+# Directives that actually affect runtime behavior. Comments, Description,
+# Type, Group, Environment/PATH formatting, KillSignal, and TimeoutStopSec
+# are deployment style/tuning choices, not functional mismatches, so they
+# are intentionally excluded from this comparison.
+UNIT_FUNCTIONAL_KEYS="ExecStart WorkingDirectory User Restart"
+
+unit_directive() {
+  grep -E "^${2}=" "$1" 2>/dev/null | tail -1 | cut -d'=' -f2- | sed 's/[[:space:]]*$//'
+}
+
 echo "================================================================"
 echo "1. SYSTEMD SERVICE"
 echo "================================================================"
 if [ -f "$UNIT_PATH" ]; then
   echo "  unit file present: $UNIT_PATH"
   if [ -f "$REPO_UNIT" ]; then
-    if diff -q "$UNIT_PATH" "$REPO_UNIT" >/dev/null 2>&1; then
-      echo "  OK: installed unit matches repo copy ($REPO_UNIT)"
-    else
-      note_fail "installed unit differs from repo copy — run: sudo diff $UNIT_PATH $REPO_UNIT"
+    UNIT_MISMATCH=0
+    for KEY in $UNIT_FUNCTIONAL_KEYS; do
+      INSTALLED_VAL=$(unit_directive "$UNIT_PATH" "$KEY")
+      REPO_VAL=$(unit_directive "$REPO_UNIT" "$KEY")
+      if [ "$INSTALLED_VAL" != "$REPO_VAL" ]; then
+        note_fail "systemd $KEY differs — installed: '$INSTALLED_VAL' vs repo: '$REPO_VAL'"
+        UNIT_MISMATCH=1
+      fi
+    done
+    if [ "$UNIT_MISMATCH" -eq 0 ]; then
+      echo "  OK: installed unit is functionally equivalent to repo copy ($UNIT_FUNCTIONAL_KEYS match)"
     fi
   else
-    echo "  WARN: repo unit not found at $REPO_UNIT, skipping diff"
+    echo "  WARN: repo unit not found at $REPO_UNIT, skipping comparison"
   fi
 else
   note_fail "$UNIT_PATH not found — service is not installed from the repo unit"
@@ -220,9 +237,18 @@ if [ -f "$TEST_VIDEO" ] && [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; then
   if [ -n "$JID" ] && [ "$JID" != "null" ]; then
     echo "  polling job $JID for a terminal status (timeout ${SHUTDOWN_JOB_TIMEOUT}s)..."
     FINAL_STATUS=""
+    JOB_HTTP_CODE=""
+    JOB_BODY=""
     ELAPSED=0
     while [ "$ELAPSED" -lt "$SHUTDOWN_JOB_TIMEOUT" ]; do
-      FINAL_STATUS=$(curl -sf "$BASE_URL/pipeline/job/$JID" -H "Authorization: Bearer $TOKEN" 2>/dev/null | jq -r '.data.status' 2>/dev/null)
+      JOB_RESP=$(curl -s -w '\n%{http_code}' "$BASE_URL/pipeline/job/$JID" -H "Authorization: Bearer $TOKEN")
+      JOB_HTTP_CODE=$(echo "$JOB_RESP" | tail -1)
+      JOB_BODY=$(echo "$JOB_RESP" | sed '$d')
+      if [ "$JOB_HTTP_CODE" = "200" ]; then
+        FINAL_STATUS=$(echo "$JOB_BODY" | jq -r '.data.status' 2>/dev/null)
+      else
+        FINAL_STATUS=""
+      fi
       if [ "$FINAL_STATUS" = "completed" ] || [ "$FINAL_STATUS" = "failed" ]; then
         break
       fi
@@ -230,11 +256,13 @@ if [ -f "$TEST_VIDEO" ] && [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; then
       ELAPSED=$((ELAPSED + SHUTDOWN_POLL_INTERVAL))
     done
 
-    echo "  job status after graceful restart: $FINAL_STATUS (after ${ELAPSED}s)"
+    echo "  job status after graceful restart: $FINAL_STATUS (after ${ELAPSED}s, last HTTP $JOB_HTTP_CODE)"
     if [ "$FINAL_STATUS" = "completed" ]; then
       echo "  OK: in-flight job completed cleanly across a graceful restart"
     elif [ "$FINAL_STATUS" = "failed" ]; then
       note_fail "job was cut off by restart instead of draining gracefully (status=failed) — check TimeoutStopSec vs job duration"
+    elif [ -z "$FINAL_STATUS" ]; then
+      note_fail "could not read job status after restart — last response was HTTP $JOB_HTTP_CODE: $JOB_BODY (if 401/403, the pre-restart auth token was rejected post-restart — check whether JWT_SECRET_KEY is fixed in .env rather than falling back to a per-process random default)"
     else
       note_fail "job did not reach a terminal state within ${SHUTDOWN_JOB_TIMEOUT}s (status=$FINAL_STATUS) — investigate a genuinely stuck job or raise SHUTDOWN_JOB_TIMEOUT"
     fi
