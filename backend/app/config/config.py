@@ -8,6 +8,24 @@ from pydantic_settings import BaseSettings
 load_dotenv()
 
 
+_JWT_SECRET_KEY_ENV = os.getenv("JWT_SECRET_KEY")
+
+if not _JWT_SECRET_KEY_ENV and os.getenv("ENVIRONMENT", "development") == "production":
+    raise RuntimeError(
+        "JWT_SECRET_KEY is not set. A persistent secret is required when "
+        "ENVIRONMENT=production — falling back to a randomly generated key "
+        "would invalidate every issued session on each restart. "
+        "Set JWT_SECRET_KEY in backend/.env (see .env.example)."
+    )
+
+if not _JWT_SECRET_KEY_ENV:
+    print(
+        "WARNING: JWT_SECRET_KEY not set — using a random per-process secret. "
+        "All existing sessions will be invalidated on restart. "
+        "Set JWT_SECRET_KEY in backend/.env for persistent sessions (see .env.example)."
+    )
+
+
 class Settings(BaseSettings):
 
     API_HOST: str = os.getenv(
@@ -139,10 +157,7 @@ class Settings(BaseSettings):
         )
     )
 
-    JWT_SECRET_KEY: str = os.getenv(
-        "JWT_SECRET_KEY",
-        secrets.token_hex(32)
-    )
+    JWT_SECRET_KEY: str = _JWT_SECRET_KEY_ENV or secrets.token_hex(32)
 
     JWT_ALGORITHM: str = os.getenv(
         "JWT_ALGORITHM",

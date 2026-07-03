@@ -143,6 +143,9 @@ HTTPS_ENABLED=true
 JWT_SECRET_KEY=<generate with: python -c "import secrets; print(secrets.token_hex(32))">
 JWT_ALGORITHM=HS256
 JWT_EXPIRY_HOURS=24
+# Required when ENVIRONMENT=production — the backend now refuses to start
+# without it (a missing key would otherwise fall back to a random per-process
+# secret, invalidating every session on each restart).
 
 FRONTEND_URL=https://highlightai.in
 PRODUCTION_URL=https://highlightai.in
