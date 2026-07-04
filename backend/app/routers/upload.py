@@ -183,21 +183,11 @@ async def upload_video(
         f"{extension}"
     )
 
-    LoggerService.info(
-        f"[AGC-049 DEBUG] upload.py — generated unique_filename={unique_filename}",
-        user_id=user_id
-    )
-
     # ── 7. Save file ──────────────────────────────────────────
     upload_dir = settings.UPLOAD_FOLDER
     os.makedirs(upload_dir, exist_ok=True)
 
     file_path = os.path.join(upload_dir, unique_filename)
-
-    LoggerService.info(
-        f"[AGC-049 DEBUG] upload.py — final file_path={file_path}",
-        user_id=user_id
-    )
 
     try:
 
@@ -210,13 +200,6 @@ async def upload_video(
             status_code=500,
             detail=f"Upload failed: {error}"
         )
-
-    LoggerService.info(
-        f"[AGC-049 DEBUG] upload.py — post-write file_path={file_path}, "
-        f"exists={os.path.exists(file_path)}, "
-        f"size={os.path.getsize(file_path) if os.path.exists(file_path) else 'N/A'}",
-        user_id=user_id
-    )
 
     # ── 8. Cache and return ───────────────────────────────────
     upload_info = {

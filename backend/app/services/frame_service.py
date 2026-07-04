@@ -1,8 +1,5 @@
-import os
 import subprocess
-from app.config.config import settings
 from app.services.job_storage_service import JobStorageService
-from app.services.logger_service import LoggerService
 
 
 class FrameService:
@@ -12,32 +9,6 @@ class FrameService:
         video_path: str,
         job_id: str | None = None
     ):
-
-        video_exists = os.path.exists(video_path)
-
-        LoggerService.info(
-            f"[AGC-049 DEBUG] frame_service.extract_frames — "
-            f"received video_path={video_path}, "
-            f"exists={video_exists}, "
-            f"cwd={os.getcwd()}, "
-            f"abs_path={os.path.abspath(video_path)}",
-            job_id=job_id
-        )
-
-        if not video_exists:
-
-            upload_dir = settings.UPLOAD_FOLDER
-
-            try:
-                listing = os.listdir(upload_dir)
-            except Exception as error:
-                listing = f"<could not list {upload_dir}: {error}>"
-
-            LoggerService.info(
-                f"[AGC-049 DEBUG] frame_service.extract_frames — "
-                f"video_path missing, directory listing of {upload_dir}: {listing}",
-                job_id=job_id
-            )
 
         resolved_job_id = (
             JobStorageService.resolve_job_id(job_id)

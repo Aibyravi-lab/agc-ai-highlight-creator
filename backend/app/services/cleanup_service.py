@@ -110,12 +110,6 @@ class CleanupService:
 
         exists_before_delete = path.exists()
 
-        LoggerService.info(
-            f"[AGC-049 DEBUG] cleanup_temp_file — job_id={job_id}, "
-            f"path={path}, exists_before_delete={exists_before_delete}",
-            job_id=job_id
-        )
-
         if not exists_before_delete or not path.is_file():
             return
 
@@ -127,22 +121,10 @@ class CleanupService:
                 f"Cleaned up temp file: {path}"
             )
 
-            LoggerService.info(
-                f"[AGC-049 DEBUG] cleanup_temp_file — job_id={job_id}, "
-                f"path={path}, delete_success=True",
-                job_id=job_id
-            )
-
         except Exception as error:
 
             LoggerService.error(
                 f"Temp file cleanup failed: {error}"
-            )
-
-            LoggerService.info(
-                f"[AGC-049 DEBUG] cleanup_temp_file — job_id={job_id}, "
-                f"path={path}, delete_success=False",
-                job_id=job_id
             )
 
     @staticmethod

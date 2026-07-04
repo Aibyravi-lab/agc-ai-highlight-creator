@@ -1,4 +1,3 @@
-import os
 from concurrent.futures import ThreadPoolExecutor
 
 from app.config.config import settings
@@ -67,13 +66,6 @@ class BackgroundJobService:
         video_path: str,
         user_id: int
     ):
-
-        LoggerService.info(
-            f"[AGC-049 DEBUG] run_pipeline — job_id={job_id}, "
-            f"video_path={video_path}, "
-            f"exists_before_process_video={os.path.exists(video_path)}",
-            job_id=job_id
-        )
 
         try:
 
