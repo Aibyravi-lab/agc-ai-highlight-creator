@@ -15,6 +15,7 @@ from fastapi import (
 
 from app.config.config import settings
 from app.dependencies import get_current_user
+from app.services.logger_service import LoggerService
 from app.services.mime_validation_service import MimeValidationService
 from app.services.upload_cache_service import UploadCacheService
 
@@ -165,25 +166,12 @@ async def upload_video(
         )
 
     # ── 5. Duplicate upload check ─────────────────────────────
+    # AGC-049: reuse disabled. Returning a cached upload_info let
+    # two jobs share one physical file, and CleanupService deletes
+    # a job's file unconditionally when that job finishes — so the
+    # first job to finish could delete the file still in use by the
+    # second. Every upload must always write its own new file.
     user_id = current_user["id"]
-
-    duplicate = UploadCacheService.get_duplicate(
-        user_id=user_id,
-        filename=bare_name,
-        size=file_size
-    )
-
-    if duplicate is not None:
-
-        return {
-            **duplicate,
-            "code": UploadError.DUPLICATE_UPLOAD,
-            "duplicate": True,
-            "message": (
-                "Duplicate upload detected. "
-                "Returning existing upload."
-            )
-        }
 
     # ── 6. Sanitize filename ──────────────────────────────────
     raw_stem = Path(bare_name).stem
@@ -195,11 +183,21 @@ async def upload_video(
         f"{extension}"
     )
 
+    LoggerService.info(
+        f"[AGC-049 DEBUG] upload.py — generated unique_filename={unique_filename}",
+        user_id=user_id
+    )
+
     # ── 7. Save file ──────────────────────────────────────────
     upload_dir = settings.UPLOAD_FOLDER
     os.makedirs(upload_dir, exist_ok=True)
 
     file_path = os.path.join(upload_dir, unique_filename)
+
+    LoggerService.info(
+        f"[AGC-049 DEBUG] upload.py — final file_path={file_path}",
+        user_id=user_id
+    )
 
     try:
 
@@ -212,6 +210,13 @@ async def upload_video(
             status_code=500,
             detail=f"Upload failed: {error}"
         )
+
+    LoggerService.info(
+        f"[AGC-049 DEBUG] upload.py — post-write file_path={file_path}, "
+        f"exists={os.path.exists(file_path)}, "
+        f"size={os.path.getsize(file_path) if os.path.exists(file_path) else 'N/A'}",
+        user_id=user_id
+    )
 
     # ── 8. Cache and return ───────────────────────────────────
     upload_info = {
