@@ -1,3 +1,5 @@
+import os
+
 from fastapi import APIRouter, HTTPException, Depends
 
 from app.services.pipeline_service import PipelineService
@@ -5,6 +7,7 @@ from app.services.job_service import JobService
 from app.services.background_job_service import (
     BackgroundJobService
 )
+from app.services.logger_service import LoggerService
 from app.config.config import settings
 from app.dependencies import get_current_user
 
@@ -92,6 +95,15 @@ def start_video_processing(
             JobService.create_job(
                 user_id=user_id
             )
+        )
+
+        LoggerService.info(
+            f"[AGC-049 DEBUG] pipeline/start — job_id={job_id}, "
+            f"upload_info.location={video_path}, "
+            f"exists={os.path.exists(video_path)}, "
+            f"size={os.path.getsize(video_path) if os.path.exists(video_path) else 'N/A'}",
+            job_id=job_id,
+            user_id=user_id
         )
 
         BackgroundJobService.start_job(
