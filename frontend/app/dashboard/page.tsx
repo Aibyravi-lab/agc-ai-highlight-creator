@@ -105,8 +105,8 @@ function DashboardContent({
         <div className="pb-2 border-b border-[#1a1d2e]">
           <div className="flex items-center justify-between">
             <div className="flex items-baseline gap-3">
-              <h1 className="text-2xl font-bold tracking-tight">AGC</h1>
-              <span className="text-gray-500 text-sm">AI Gaming Highlight Creator</span>
+              <h1 className="text-2xl font-bold tracking-tight">Vedzovi</h1>
+              <span className="text-gray-500 text-sm">AI Video Intelligence</span>
             </div>
             <div className="flex items-center gap-3">
               <span className="text-gray-500 text-sm hidden sm:block">{user.name}</span>
@@ -126,6 +126,7 @@ function DashboardContent({
           <UploadPanel
             selectedFile={selectedFile}
             loading={loading}
+            progressStatus={progressStatus}
             onSelectFile={setSelectedFile}
             onGenerateHighlights={handleGenerateHighlights}
             fileInputKey={fileInputKey}

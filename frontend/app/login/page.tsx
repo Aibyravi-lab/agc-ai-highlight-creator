@@ -50,8 +50,8 @@ export default function LoginPage() {
 
         {/* Brand */}
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-white tracking-tight">AGC</h1>
-          <p className="text-gray-500 text-sm mt-1">AI Gaming Highlight Creator</p>
+          <h1 className="text-2xl font-bold text-white tracking-tight">Vedzovi</h1>
+          <p className="text-gray-500 text-sm mt-1">AI Video Intelligence</p>
         </div>
 
         {/* Card */}

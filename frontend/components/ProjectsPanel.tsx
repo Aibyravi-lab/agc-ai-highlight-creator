@@ -79,11 +79,18 @@ function ProjectCard({ project, onDelete }: { project: ProjectItem; onDelete: ()
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteSuccess, setDeleteSuccess] = useState(false);
+  const [thumbnailFailed, setThumbnailFailed] = useState(false);
+  const [lastThumbnailUrl, setLastThumbnailUrl] = useState<string | null>(null);
 
   const thumbnailUrl = useAuthedMediaUrl(project.thumbnail_path);
   const reelUrl = useAuthedMediaUrl(project.horizontal_reel_path);
   const hasReel = Boolean(project.horizontal_reel_path);
   const hasThumbnail = Boolean(project.thumbnail_path);
+
+  if (thumbnailUrl !== lastThumbnailUrl) {
+    setLastThumbnailUrl(thumbnailUrl);
+    setThumbnailFailed(false);
+  }
 
   const formattedDate = project.created_at
     ? new Date(
@@ -141,11 +148,12 @@ function ProjectCard({ project, onDelete }: { project: ProjectItem; onDelete: ()
     >
       {/* Thumbnail */}
       <div className="aspect-video bg-[#0a0b10] flex items-center justify-center relative">
-        {thumbnailUrl ? (
+        {thumbnailUrl && !thumbnailFailed ? (
           <img
             src={thumbnailUrl}
             alt={project.original_video_name}
             className="w-full h-full object-cover"
+            onError={() => setThumbnailFailed(true)}
           />
         ) : (
           <div className="flex flex-col items-center gap-2 text-gray-600">

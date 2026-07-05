@@ -42,7 +42,7 @@ class Settings(BaseSettings):
 
     APP_NAME: str = os.getenv(
         "APP_NAME",
-        "AGC Backend"
+        "Vedzovi Backend"
     )
 
     APP_VERSION: str = os.getenv(
@@ -57,12 +57,12 @@ class Settings(BaseSettings):
 
     PRODUCTION_URL: str = os.getenv(
         "PRODUCTION_URL",
-        "https://highlightai.in"
+        "https://vedzovi.com"
     )
 
     WWW_PRODUCTION_URL: str = os.getenv(
         "WWW_PRODUCTION_URL",
-        "https://www.highlightai.in"
+        "https://www.vedzovi.com"
     )
 
     DATABASE_FOLDER: str = os.getenv(

@@ -161,7 +161,7 @@ export function StatsPanel({ jobStats, allJobs }: StatsPanelProps) {
         {recentJobs.length === 0 ? (
           <div className="rounded-xl border border-[#1e2030] bg-[#0f1117] p-8 text-center">
             <p className="text-gray-500 text-sm">
-              No jobs yet. Upload your first gameplay video.
+              No jobs yet. Upload your first video.
             </p>
           </div>
         ) : (

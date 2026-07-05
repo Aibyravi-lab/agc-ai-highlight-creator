@@ -1,3 +1,4 @@
+import os
 import threading
 from datetime import datetime, timedelta
 
@@ -42,6 +43,12 @@ class UploadCacheService:
 
             if datetime.utcnow() - stored_at > window:
                 del cls._cache[key]
+                return None
+
+            location = upload_info.get("location")
+
+            if not location or not os.path.isfile(location):
+                cls._cache.pop(key, None)
                 return None
 
             return upload_info

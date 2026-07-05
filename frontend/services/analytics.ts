@@ -4,6 +4,7 @@ type AnalyticsEvent =
   | "Landing Viewed"
   | "Login Clicked"
   | "Register Clicked"
+  | "Learn More Clicked"
   | "User Registered"
   | "User Logged In"
   | "Upload Started"

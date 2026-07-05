@@ -1,7 +1,7 @@
 # AGC Production Deployment Guide
 
 Target: single Ubuntu 22.04 VPS at `45.94.209.92`
-Domain: `highlightai.in` (frontend) · `api.highlightai.in` (backend API)
+Domain: `vedzovi.com` (frontend) · `api.vedzovi.com` (backend API)
 
 ---
 
@@ -38,15 +38,15 @@ Add the following A records in your DNS provider (TTL 300):
 
 | Record | Type | Value |
 |--------|------|-------|
-| `highlightai.in` | A | `45.94.209.92` |
-| `www.highlightai.in` | A | `45.94.209.92` |
-| `api.highlightai.in` | A | `45.94.209.92` |
+| `vedzovi.com` | A | `45.94.209.92` |
+| `www.vedzovi.com` | A | `45.94.209.92` |
+| `api.vedzovi.com` | A | `45.94.209.92` |
 
 Verify propagation before proceeding:
 
 ```bash
-dig +short highlightai.in
-dig +short api.highlightai.in
+dig +short vedzovi.com
+dig +short api.vedzovi.com
 ```
 
 Both must return `45.94.209.92`.
@@ -94,11 +94,11 @@ sudo apt install -y certbot python3-certbot-nginx
 
 # Issue cert for all three names in one certificate
 sudo certbot --nginx \
-  -d highlightai.in \
-  -d www.highlightai.in \
-  -d api.highlightai.in \
+  -d vedzovi.com \
+  -d www.vedzovi.com \
+  -d api.vedzovi.com \
   --agree-tos \
-  --email admin@highlightai.in \
+  --email admin@vedzovi.com \
   --no-eff-email
 ```
 
@@ -108,7 +108,7 @@ Verify the cert:
 
 ```bash
 sudo nginx -t && sudo systemctl reload nginx
-curl -Is https://highlightai.in | head -5
+curl -Is https://vedzovi.com | head -5
 # Expect: HTTP/2 200
 ```
 
@@ -147,9 +147,9 @@ JWT_EXPIRY_HOURS=24
 # without it (a missing key would otherwise fall back to a random per-process
 # secret, invalidating every session on each restart).
 
-FRONTEND_URL=https://highlightai.in
-PRODUCTION_URL=https://highlightai.in
-WWW_PRODUCTION_URL=https://www.highlightai.in
+FRONTEND_URL=https://vedzovi.com
+PRODUCTION_URL=https://vedzovi.com
+WWW_PRODUCTION_URL=https://www.vedzovi.com
 ```
 
 ### Create the virtual environment and install dependencies
@@ -188,7 +188,7 @@ If you see the `⚠️ WARNING` line, `HTTPS_ENABLED=true` is missing from `.env
 ### Environment variables (`frontend/.env.local` on the server)
 
 ```dotenv
-NEXT_PUBLIC_API_URL=https://api.highlightai.in
+NEXT_PUBLIC_API_URL=https://api.vedzovi.com
 ```
 
 This is the only value that must change between dev and production. No other API URL is hardcoded in the frontend code.
@@ -210,16 +210,16 @@ Run under `systemd` or `pm2` for persistence.
 
 Run these after every deployment or cert renewal:
 
-- [ ] `curl -Is https://highlightai.in | head -1` → `HTTP/2 200`
-- [ ] `curl -Is https://www.highlightai.in | head -1` → `HTTP/2 301` (redirects to apex)
-- [ ] `curl -Is https://api.highlightai.in/health` → `HTTP/2 200`
-- [ ] `curl -Is http://highlightai.in | head -1` → `HTTP/1.1 301` (redirects to HTTPS)
-- [ ] `curl -Is http://api.highlightai.in | head -1` → `HTTP/1.1 301`
-- [ ] Browser: open `https://highlightai.in` — padlock visible, no mixed-content warnings
+- [ ] `curl -Is https://vedzovi.com | head -1` → `HTTP/2 200`
+- [ ] `curl -Is https://www.vedzovi.com | head -1` → `HTTP/2 301` (redirects to apex)
+- [ ] `curl -Is https://api.vedzovi.com/health` → `HTTP/2 200`
+- [ ] `curl -Is http://vedzovi.com | head -1` → `HTTP/1.1 301` (redirects to HTTPS)
+- [ ] `curl -Is http://api.vedzovi.com | head -1` → `HTTP/1.1 301`
+- [ ] Browser: open `https://vedzovi.com` — padlock visible, no mixed-content warnings
 - [ ] Browser: login and upload a video — pipeline runs to completion
 - [ ] Response headers include `Strict-Transport-Security` (check DevTools → Network → response headers)
 - [ ] Response headers include `X-Content-Type-Options: nosniff`
-- [ ] SSL Labs grade: `curl https://www.ssllabs.com/ssltest/analyze.html?d=highlightai.in` (or visit in browser) — aim for A or A+
+- [ ] SSL Labs grade: `curl https://www.ssllabs.com/ssltest/analyze.html?d=vedzovi.com` (or visit in browser) — aim for A or A+
 
 ---
 
@@ -228,7 +228,7 @@ Run these after every deployment or cert renewal:
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | `502 Bad Gateway` on API | Backend not running on port 8000 | `systemctl status agc-backend` |
-| Mixed-content warning | `NEXT_PUBLIC_API_URL` still set to `http://` | Update `frontend/.env.local` to `https://api.highlightai.in` and rebuild |
+| Mixed-content warning | `NEXT_PUBLIC_API_URL` still set to `http://` | Update `frontend/.env.local` to `https://api.vedzovi.com` and rebuild |
 | Cert not found | DNS not propagated when certbot ran | Re-run `certbot --nginx -d ...` after DNS propagates |
 | Upload fails with `413` | `client_max_body_size` too low | Already set to `500m` in `nginx/agc.conf` |
-| CORS errors in browser | `PRODUCTION_URL` not set in backend `.env` | Add `PRODUCTION_URL=https://highlightai.in` to `backend/.env` |
+| CORS errors in browser | `PRODUCTION_URL` not set in backend `.env` | Add `PRODUCTION_URL=https://vedzovi.com` to `backend/.env` |

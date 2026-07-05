@@ -148,10 +148,10 @@ Complete this checklist on a fresh staging or production environment before anno
 
 | # | Test | Expected Result | Status | Notes | Date Verified |
 |---|------|-----------------|--------|-------|---------------|
-| 10.1 | `https://highlightai.in` loads | HTTP/2 200 | | | |
-| 10.2 | `http://highlightai.in` redirects to HTTPS | HTTP 301 redirect | | | |
-| 10.3 | `https://www.highlightai.in` redirects to apex | HTTP 301 redirect | | | |
-| 10.4 | `https://api.highlightai.in/health` returns 200 | HTTP/2 200 | | | |
+| 10.1 | `https://vedzovi.com` loads | HTTP/2 200 | | | |
+| 10.2 | `http://vedzovi.com` redirects to HTTPS | HTTP 301 redirect | | | |
+| 10.3 | `https://www.vedzovi.com` redirects to apex | HTTP 301 redirect | | | |
+| 10.4 | `https://api.vedzovi.com/health` returns 200 | HTTP/2 200 | | | |
 | 10.5 | SSL certificate valid | No browser warnings | | | |
 | 10.6 | SSL Labs grade A or A+ | Verify at ssllabs.com | | | |
 | 10.7 | Browser padlock visible | No mixed-content warnings | | | |

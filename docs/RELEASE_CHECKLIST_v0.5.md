@@ -87,14 +87,14 @@ Mark each item ✅ before tagging the release.
 | 5.2 | `ENVIRONMENT=production` on server | Set in `.env` | |
 | 5.3 | `HTTPS_ENABLED=true` on server | Set in `.env` | |
 | 5.4 | `JWT_SECRET_KEY` is a strong random hex string | Not the placeholder value | |
-| 5.5 | `frontend/.env.local` set to production API URL | `NEXT_PUBLIC_API_URL=https://api.highlightai.in` | |
+| 5.5 | `frontend/.env.local` set to production API URL | `NEXT_PUBLIC_API_URL=https://api.vedzovi.com` | |
 | 5.6 | Nginx config deployed and test passes | `nginx -t` prints `syntax is ok` | |
-| 5.7 | SSL cert valid on all three domains | `https://highlightai.in`, `https://www.highlightai.in`, `https://api.highlightai.in` | |
-| 5.8 | HTTP → HTTPS redirect active | `curl http://highlightai.in` returns 301 | |
+| 5.7 | SSL cert valid on all three domains | `https://vedzovi.com`, `https://www.vedzovi.com`, `https://api.vedzovi.com` | |
+| 5.8 | HTTP → HTTPS redirect active | `curl http://vedzovi.com` returns 301 | |
 | 5.9 | Ports 3000 and 8000 blocked externally | UFW `deny 3000`, `deny 8000` | |
 | 5.10 | Backend running under systemd or supervisor | Survives reboot | |
 | 5.11 | Frontend running under pm2 or systemd | Survives reboot | |
-| 5.12 | `GET /health` returns 200 from public internet | `curl https://api.highlightai.in/health` → 200 | |
+| 5.12 | `GET /health` returns 200 from public internet | `curl https://api.vedzovi.com/health` → 200 | |
 | 5.13 | HSTS header present in production | `Strict-Transport-Security` in response headers | |
 
 ---

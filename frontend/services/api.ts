@@ -28,7 +28,7 @@ async function request(
       const error = await response.json();
 
       message =
-        error.detail ||
+        (typeof error.detail === "string" ? error.detail : error.detail?.message) ||
         error.message ||
         JSON.stringify(error);
     } catch {

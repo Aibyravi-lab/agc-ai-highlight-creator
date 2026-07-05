@@ -1,10 +1,10 @@
-# AGC — AI Gaming Highlight Creator
+# Vedzovi — AI Video Intelligence
 
 **v0.5.0-beta** · Public Beta
 
-> Transform long gameplay recordings into viral short-form clips — automatically.
+> Transform long videos into viral short-form clips — automatically.
 
-AGC is an AI-powered platform that analyzes gaming videos and live stream recordings to detect and export highlight moments as ready-to-publish clips for YouTube Shorts, Instagram Reels, and TikTok. No manual editing required.
+Vedzovi is an AI-powered platform that analyzes videos and live stream recordings to detect and export highlight moments as ready-to-publish clips for YouTube Shorts, Instagram Reels, and TikTok. No manual editing required.
 
 ---
 

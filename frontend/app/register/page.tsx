@@ -13,6 +13,8 @@ export default function RegisterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -28,6 +30,16 @@ export default function RegisterPage() {
 
     if (password.length < 8) {
       setError("Password must be at least 8 characters");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError("Passwords do not match. Please re-enter your password.");
+      return;
+    }
+
+    if (!agreedToTerms) {
+      setError("Please agree to the Privacy Policy and Terms & Conditions to continue.");
       return;
     }
 
@@ -57,15 +69,15 @@ export default function RegisterPage() {
 
         {/* Brand */}
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-white tracking-tight">AGC</h1>
-          <p className="text-gray-500 text-sm mt-1">AI Gaming Highlight Creator</p>
+          <h1 className="text-2xl font-bold text-white tracking-tight">Vedzovi</h1>
+          <p className="text-gray-500 text-sm mt-1">AI Video Intelligence</p>
         </div>
 
         {/* Card */}
         <div className="bg-[#0d0e14] border border-[#1a1d2e] rounded-2xl p-8">
           <h2 className="text-lg font-semibold text-white mb-1">Create account</h2>
           <p className="text-gray-500 text-sm mb-6">
-            Start generating AI highlights from your gameplay.
+            Start generating AI highlights from your videos.
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -115,6 +127,49 @@ export default function RegisterPage() {
                 className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090d] border border-[#1a1d2e] text-white text-sm placeholder-gray-600 focus:outline-none focus:border-green-500/60 transition-colors"
                 placeholder="Min. 8 characters"
               />
+            </div>
+
+            <div>
+              <label className="block text-sm text-gray-400 mb-1.5" htmlFor="confirm-password">
+                Confirm Password
+              </label>
+              <input
+                id="confirm-password"
+                type="password"
+                autoComplete="new-password"
+                required
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090d] border border-[#1a1d2e] text-white text-sm placeholder-gray-600 focus:outline-none focus:border-green-500/60 transition-colors"
+                placeholder="Re-enter your password"
+              />
+            </div>
+
+            <div className="flex items-start gap-2.5">
+              <input
+                id="agree-terms"
+                type="checkbox"
+                checked={agreedToTerms}
+                onChange={(e) => setAgreedToTerms(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded border-[#1a1d2e] bg-[#08090d] accent-green-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-500"
+              />
+              <label htmlFor="agree-terms" className="text-sm text-gray-400 leading-snug">
+                I agree to the{" "}
+                <Link
+                  href="/privacy"
+                  className="text-green-400 hover:text-green-300 transition-colors"
+                >
+                  Privacy Policy
+                </Link>{" "}
+                and{" "}
+                <Link
+                  href="/terms"
+                  className="text-green-400 hover:text-green-300 transition-colors"
+                >
+                  Terms &amp; Conditions
+                </Link>
+                .
+              </label>
             </div>
 
             {error && (
