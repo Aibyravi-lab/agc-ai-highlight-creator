@@ -86,11 +86,6 @@ function DashboardContent({
   };
 
   useEffect(() => {
-    track("history_opened");
-    track("projects_opened");
-  }, []);
-
-  useEffect(() => {
     if (result !== null && result !== prevResultRef.current) {
       setFeedbackDismissed(false);
     }

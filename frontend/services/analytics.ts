@@ -16,7 +16,8 @@ type AnalyticsEvent =
   | "User Logged Out"
   | "Feedback Opened"
   | "Feedback Submitted"
-  | "Feedback Skipped";
+  | "Feedback Skipped"
+  | "logout";
 
 export function track(
   event: AnalyticsEvent,
