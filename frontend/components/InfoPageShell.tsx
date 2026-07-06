@@ -6,9 +6,17 @@ interface InfoPageShellProps {
   title: string;
   subtitle?: string;
   children: ReactNode;
+  backHref?: string;
+  backLabel?: string;
 }
 
-export function InfoPageShell({ title, subtitle, children }: InfoPageShellProps) {
+export function InfoPageShell({
+  title,
+  subtitle,
+  children,
+  backHref = "/",
+  backLabel = "← Back to Home",
+}: InfoPageShellProps) {
   return (
     <div className="min-h-screen bg-[#08090d] text-white flex flex-col">
       <header className="border-b border-[#1a1d2e]">
@@ -17,10 +25,10 @@ export function InfoPageShell({ title, subtitle, children }: InfoPageShellProps)
             Vedzovi
           </Link>
           <Link
-            href="/"
+            href={backHref}
             className="text-sm text-gray-400 hover:text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-500 focus-visible:rounded"
           >
-            ← Back to Home
+            {backLabel}
           </Link>
         </div>
       </header>

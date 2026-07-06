@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useAuth } from "../../context/AuthContext";
 import { InfoPageShell } from "../../components/InfoPageShell";
 
 interface PlanCardProps {
@@ -68,10 +69,15 @@ function PlanCard({ name, price, priceSuffix, features, badge, button, highlight
 }
 
 export default function PricingPage() {
+  const { user, loading } = useAuth();
+  const isAuthenticated = !loading && !!user;
+
   return (
     <InfoPageShell
       title="Pricing"
       subtitle="Simple and transparent, currently free during Public Beta."
+      backHref={isAuthenticated ? "/dashboard" : "/"}
+      backLabel={isAuthenticated ? "← Back to Dashboard" : "← Back to Home"}
     >
       <div className="flex flex-col md:flex-row gap-6">
         <PlanCard

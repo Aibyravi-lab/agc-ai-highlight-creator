@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import {
   downloadReel,
   downloadVerticalReel,
@@ -138,17 +137,9 @@ export function StatsPanel({ jobStats, allJobs, creditsRemaining }: StatsPanelPr
           </div>
 
           {creditsRemaining <= 0 && (
-            <div className="mt-3 rounded-xl border border-yellow-500/25 bg-[#0f1117] p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <p className="text-sm text-gray-400">
-                You&apos;ve used all your free AI highlights.
-              </p>
-              <Link
-                href="/pricing"
-                className="inline-block bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors text-center flex-shrink-0"
-              >
-                Upgrade to Pro
-              </Link>
-            </div>
+            <p className="mt-3 text-sm text-gray-400">
+              You&apos;ve used all your free AI highlights.
+            </p>
           )}
         </div>
       )}

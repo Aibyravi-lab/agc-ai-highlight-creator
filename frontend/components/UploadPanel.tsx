@@ -60,42 +60,62 @@ export function UploadPanel({
         type="file"
         accept="video/*"
         className="hidden"
+        disabled={outOfCredits}
         onChange={(e) => handleFiles(e.target.files)}
       />
 
       {/* Drop zone */}
-      <div
-        role="button"
-        tabIndex={0}
-        aria-label="Upload video: drag and drop or click to browse"
-        onClick={() => inputRef.current?.click()}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
+      <div className="relative">
+        <div
+          role="button"
+          tabIndex={outOfCredits ? -1 : 0}
+          aria-disabled={outOfCredits}
+          aria-label="Upload video: drag and drop or click to browse"
+          onClick={() => {
+            if (!outOfCredits) inputRef.current?.click();
+          }}
+          onKeyDown={(e) => {
+            if (outOfCredits) return;
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              inputRef.current?.click();
+            }
+          }}
+          onDragOver={(e) => {
+            if (outOfCredits) return;
             e.preventDefault();
-            inputRef.current?.click();
-          }
-        }}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDragging(true);
-        }}
-        onDragLeave={() => setIsDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setIsDragging(false);
-          handleFiles(e.dataTransfer.files);
-        }}
-        className={`flex flex-col items-center justify-center text-center rounded-2xl border-2 border-dashed px-6 py-14 cursor-pointer transition-colors ${
-          isDragging
-            ? "border-green-500 bg-green-500/5"
-            : "border-[#2a2d3e] bg-[#0d0e14] hover:border-green-500/50 hover:bg-[#0f1117]"
-        }`}
-      >
-        <div className="w-16 h-16 rounded-2xl bg-green-500/10 flex items-center justify-center text-green-400 mb-5">
-          <IconUploadCloud />
+            setIsDragging(true);
+          }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={(e) => {
+            if (outOfCredits) return;
+            e.preventDefault();
+            setIsDragging(false);
+            handleFiles(e.dataTransfer.files);
+          }}
+          className={`flex flex-col items-center justify-center text-center rounded-2xl border-2 border-dashed px-6 py-14 transition-colors ${
+            outOfCredits
+              ? "opacity-50 cursor-not-allowed pointer-events-none border-[#2a2d3e] bg-[#0d0e14]"
+              : isDragging
+              ? "border-green-500 bg-green-500/5 cursor-pointer"
+              : "border-[#2a2d3e] bg-[#0d0e14] hover:border-green-500/50 hover:bg-[#0f1117] cursor-pointer"
+          }`}
+        >
+          <div className="w-16 h-16 rounded-2xl bg-green-500/10 flex items-center justify-center text-green-400 mb-5">
+            <IconUploadCloud />
+          </div>
+          <p className="text-white font-semibold text-base">Drag &amp; Drop your video here</p>
+          <p className="text-gray-500 text-sm mt-1.5">or click to browse your files</p>
         </div>
-        <p className="text-white font-semibold text-base">Drag &amp; Drop your video here</p>
-        <p className="text-gray-500 text-sm mt-1.5">or click to browse your files</p>
+
+        {outOfCredits && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-center rounded-2xl bg-[#0d0e14]/85 px-6">
+            <p className="text-white font-semibold text-base">🔒 Upload disabled</p>
+            <p className="text-gray-400 text-sm mt-1.5 max-w-xs">
+              Upgrade to Pro to continue generating AI highlights.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Supported formats / limits */}
