@@ -96,7 +96,7 @@ export function usePipeline() {
 
         if (job.status === "completed") {
           stopPolling();
-          track("Pipeline Completed");
+          track("pipeline_completed");
           setState((prev) => {
             return { ...prev, result: job.result ?? null, loading: false, progress: 100, progressStatus: "Completed", currentJobId: null, selectedFile: null, successMessage: "Highlights generated successfully!", fileInputKey: prev.fileInputKey + 1 };
           });
@@ -158,14 +158,14 @@ export function usePipeline() {
       });
 
       try {
-        track("Upload Started");
+        track("upload_started");
         const uploadResponse = await uploadVideo(file);
 
         if (!uploadResponse.location) {
           throw new Error("Upload location missing");
         }
 
-        track("Upload Completed");
+        track("upload_completed");
         setState((prev) => {
           return { ...prev, progressStatus: "Starting pipeline...", progress: 10 };
         });
@@ -176,19 +176,26 @@ export function usePipeline() {
           throw new Error("Job ID missing from response");
         }
 
-        track("Pipeline Started");
+        track("pipeline_started");
         const jobId = startResponse.job_id;
 
         setState((prev) => {
           return { ...prev, currentJobId: jobId, progressStatus: "Processing...", progress: 20 };
         });
       } catch (err) {
-        const errorMessage =
-          err instanceof Error ? err.message : "Processing failed";
+        const isTimeout = (err as { name?: string } | null)?.name === "AbortError";
+        const errorMessage = isTimeout
+          ? "Upload timed out after 60 seconds. Please try again."
+          : err instanceof Error
+          ? err.message
+          : "Upload failed. Please check your internet connection and try again.";
+
         setState((prev) => ({
           ...prev,
           loading: false,
           error: errorMessage,
+          progress: 0,
+          progressStatus: "",
         }));
       }
     },

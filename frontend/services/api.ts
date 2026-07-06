@@ -17,7 +17,12 @@ async function request(
       cache: "no-store",
       ...options,
     });
-  } catch {
+  } catch (err) {
+    // Preserve AbortError identity so callers (e.g. an upload timeout) can
+    // distinguish "request aborted" from a genuine network failure.
+    if ((err as { name?: string } | null)?.name === "AbortError") {
+      throw err;
+    }
     throw new Error("Unable to reach the server. Please try again.");
   }
 
@@ -108,14 +113,24 @@ function mapJob(backendJob: any) {
   };
 }
 
+const UPLOAD_TIMEOUT_MS = 60000;
+
 export async function uploadVideo(file: File) {
   const formData = new FormData();
   formData.append("file", file);
 
-  return authedRequest("/upload/", {
-    method: "POST",
-    body: formData,
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+
+  try {
+    return await authedRequest("/upload/", {
+      method: "POST",
+      body: formData,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 export async function startPipeline(videoPath: string) {
