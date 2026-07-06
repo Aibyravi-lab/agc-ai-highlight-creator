@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { usePipeline } from "../../hooks/usePipeline";
+import { useSubscription } from "../../hooks/useSubscription";
 import { UploadPanel } from "../../components/UploadPanel";
 import { ProgressPanel } from "../../components/ProgressPanel";
 import { StatsPanel } from "../../components/StatsPanel";
@@ -73,6 +74,9 @@ function DashboardContent({
     clearSuccessMessage,
   } = usePipeline();
 
+  const { subscription, loading: subscriptionLoading } = useSubscription();
+  const isPro = subscription?.plan === "PRO";
+
   const handleLogout = () => {
     track("logout");
     reset();
@@ -115,6 +119,17 @@ function DashboardContent({
               >
                 Pricing
               </Link>
+              <span
+                className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                  subscriptionLoading
+                    ? "bg-[#1a1d2e] text-gray-600 animate-pulse"
+                    : isPro
+                    ? "bg-purple-500/15 text-purple-400"
+                    : "bg-[#1a1d2e] text-gray-400"
+                }`}
+              >
+                {subscriptionLoading ? "···" : isPro ? "PRO" : "FREE"}
+              </span>
               <span className="text-gray-500 text-sm hidden sm:block">{user.name}</span>
               <button
                 onClick={handleLogout}
@@ -137,6 +152,8 @@ function DashboardContent({
             onGenerateHighlights={handleGenerateHighlights}
             fileInputKey={fileInputKey}
             creditsRemaining={user.credits_remaining}
+            isPro={isPro}
+            subscriptionLoading={subscriptionLoading}
           />
         </section>
 
@@ -157,7 +174,13 @@ function DashboardContent({
 
         {/* System Statistics + Recent Jobs */}
         <section>
-          <StatsPanel jobStats={jobStats} allJobs={allJobs} creditsRemaining={user.credits_remaining} />
+          <StatsPanel
+            jobStats={jobStats}
+            allJobs={allJobs}
+            creditsRemaining={user.credits_remaining}
+            isPro={isPro}
+            subscriptionLoading={subscriptionLoading}
+          />
         </section>
 
         {/* History */}

@@ -1,7 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
+import { useSubscription } from "../../hooks/useSubscription";
 import { InfoPageShell } from "../../components/InfoPageShell";
 
 interface PlanCardProps {
@@ -14,6 +17,7 @@ interface PlanCardProps {
     label: string;
     href?: string;
     disabled?: boolean;
+    onClick?: () => void;
   };
   highlighted?: boolean;
 }
@@ -56,6 +60,13 @@ function PlanCard({ name, price, priceSuffix, features, badge, button, highlight
         <span className="block text-center bg-[#1a1d2e] text-gray-500 font-semibold px-6 py-3 rounded-xl text-sm cursor-not-allowed">
           {button.label}
         </span>
+      ) : button.onClick ? (
+        <button
+          onClick={button.onClick}
+          className="block w-full text-center bg-green-600 hover:bg-green-700 text-white font-semibold px-6 py-3 rounded-xl text-sm transition-colors"
+        >
+          {button.label}
+        </button>
       ) : (
         <Link
           href={button.href ?? "#"}
@@ -69,8 +80,30 @@ function PlanCard({ name, price, priceSuffix, features, badge, button, highlight
 }
 
 export default function PricingPage() {
-  const { user, loading } = useAuth();
-  const isAuthenticated = !loading && !!user;
+  const { user, loading: authLoading } = useAuth();
+  const isAuthenticated = !authLoading && !!user;
+  const { subscription, loading: subscriptionLoading, upgrade } = useSubscription(isAuthenticated);
+  const router = useRouter();
+
+  const [upgrading, setUpgrading] = useState(false);
+  const [upgradeError, setUpgradeError] = useState<string | null>(null);
+
+  // While auth or subscription is still resolving, we don't yet know the
+  // user's plan — avoid rendering a plan-specific button prematurely.
+  const isResolving = authLoading || (isAuthenticated && subscriptionLoading);
+  const isPro = subscription?.plan === "PRO";
+
+  const handleUpgrade = async () => {
+    setUpgradeError(null);
+    setUpgrading(true);
+    try {
+      await upgrade();
+      router.push("/dashboard");
+    } catch (err) {
+      setUpgradeError(err instanceof Error ? err.message : "Upgrade failed. Please try again.");
+      setUpgrading(false);
+    }
+  };
 
   return (
     <InfoPageShell
@@ -84,18 +117,36 @@ export default function PricingPage() {
           name="Free"
           price="₹0"
           features={["3 AI Highlights", "Dashboard", "Projects", "History"]}
-          button={{ label: "Current Plan", disabled: true }}
+          button={
+            isResolving
+              ? { label: "Loading...", disabled: true }
+              : isPro
+              ? { label: "Free", disabled: true }
+              : { label: "Current Plan", disabled: true }
+          }
         />
         <PlanCard
-          name="Pro (Coming Soon)"
+          name="Pro"
           price="₹499"
           priceSuffix="/month"
-          badge="Launching Soon"
+          badge={!isResolving && isPro ? "Active" : undefined}
           highlighted
           features={["Unlimited AI Highlights", "Priority Processing", "Future Premium Features"]}
-          button={{ label: "Coming Soon", disabled: true }}
+          button={
+            isResolving
+              ? { label: "Loading...", disabled: true }
+              : isPro
+              ? { label: "Current Plan", disabled: true }
+              : isAuthenticated
+              ? { label: upgrading ? "Upgrading..." : "Upgrade to Pro", onClick: handleUpgrade }
+              : { label: "Sign in to Upgrade", href: "/login" }
+          }
         />
       </div>
+
+      {upgradeError && (
+        <p className="mt-4 text-sm text-red-400 text-center">{upgradeError}</p>
+      )}
     </InfoPageShell>
   );
 }

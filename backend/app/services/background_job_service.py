@@ -6,6 +6,7 @@ from app.services.pipeline_service import PipelineService
 from app.services.cleanup_service import CleanupService
 from app.services.logger_service import LoggerService
 from app.services.auth_service import AuthService
+from app.services.subscription_service import SubscriptionService
 
 
 class BackgroundJobService:
@@ -110,9 +111,14 @@ class BackgroundJobService:
 
             finally:
 
-                AuthService.refund_credit(
-                    user_id=user_id
-                )
+                # Active PRO users never had a credit deducted to start this
+                # job (see pipeline.py's /start guard), so refunding here
+                # would incorrectly inflate their stored credit balance.
+                if not SubscriptionService.is_pro_active(user_id):
+
+                    AuthService.refund_credit(
+                        user_id=user_id
+                    )
 
         finally:
 

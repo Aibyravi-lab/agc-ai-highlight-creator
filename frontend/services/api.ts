@@ -303,6 +303,18 @@ export async function submitFeedback(
   }>;
 }
 
+export async function getSubscription() {
+  return authedRequest(
+    "/subscription/me"
+  ) as Promise<import("../types/subscription").SubscriptionInfo>;
+}
+
+export async function upgradeToPro() {
+  return authedRequest("/subscription/mock-upgrade", {
+    method: "POST",
+  }) as Promise<import("../types/subscription").SubscriptionInfo>;
+}
+
 export async function getFeedback() {
   return authedRequest("/feedback") as Promise<{
     success: boolean;

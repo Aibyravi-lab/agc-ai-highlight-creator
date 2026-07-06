@@ -6,6 +6,7 @@ from jose import jwt, JWTError
 
 from app.config.config import settings
 from app.services.database_service import DatabaseService
+from app.services.subscription_service import SubscriptionService
 
 
 class AuthService:
@@ -110,6 +111,8 @@ class AuthService:
         user_id = cursor.lastrowid
 
         connection.close()
+
+        SubscriptionService.create_default_subscription(user_id)
 
         return {
             "id": user_id,

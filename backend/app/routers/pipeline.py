@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from app.services.pipeline_service import PipelineService
 from app.services.job_service import JobService
 from app.services.auth_service import AuthService
+from app.services.subscription_service import SubscriptionService
 from app.services.background_job_service import (
     BackgroundJobService
 )
@@ -102,13 +103,15 @@ def start_video_processing(
             }
         )
 
-    if current_user.get("credits_remaining", 0) <= 0:
+    if not SubscriptionService.is_pro_active(user_id):
 
-        raise _insufficient_credits_error()
+        if current_user.get("credits_remaining", 0) <= 0:
 
-    if not AuthService.deduct_credit(user_id):
+            raise _insufficient_credits_error()
 
-        raise _insufficient_credits_error()
+        if not AuthService.deduct_credit(user_id):
+
+            raise _insufficient_credits_error()
 
     try:
 

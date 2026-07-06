@@ -30,6 +30,7 @@ from app.routers.files import router as files_router
 from app.routers.projects import router as projects_router
 from app.routers.observability import router as observability_router
 from app.routers.feedback import router as feedback_router
+from app.routers.subscription import router as subscription_router
 
 load_dotenv()
 
@@ -139,6 +140,7 @@ app.include_router(auth_router)
 app.include_router(files_router)
 app.include_router(projects_router)
 app.include_router(feedback_router)
+app.include_router(subscription_router)
 
 @app.on_event("shutdown")
 def on_shutdown():

@@ -11,6 +11,8 @@ interface UploadPanelProps {
   onGenerateHighlights: () => void;
   fileInputKey: number;
   creditsRemaining: number;
+  isPro?: boolean;
+  subscriptionLoading?: boolean;
 }
 
 const SUPPORTED_FORMATS_LABEL = "MP4 • MOV • AVI • MKV";
@@ -37,12 +39,14 @@ export function UploadPanel({
   onGenerateHighlights,
   fileInputKey,
   creditsRemaining,
+  isPro = false,
+  subscriptionLoading = false,
 }: UploadPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   const isUploading = loading && progressStatus.toLowerCase().startsWith("uploading");
-  const outOfCredits = creditsRemaining <= 0;
+  const outOfCredits = !subscriptionLoading && !isPro && creditsRemaining <= 0;
 
   const handleFiles = (files: FileList | null) => {
     if (files && files.length > 0) {
@@ -152,17 +156,23 @@ export function UploadPanel({
 
       <button
         onClick={onGenerateHighlights}
-        disabled={loading || !selectedFile || outOfCredits}
+        disabled={loading || !selectedFile || outOfCredits || subscriptionLoading}
         className={`mt-5 w-full text-white p-4 rounded-xl font-semibold transition-colors ${
           loading
             ? "bg-green-600/50 cursor-wait"
-            : !selectedFile || outOfCredits
+            : !selectedFile || outOfCredits || subscriptionLoading
             ? "bg-green-600/50 cursor-not-allowed"
             : "bg-green-600 hover:bg-green-700 cursor-pointer"
         }`}
       >
         {buttonLabel(loading, progressStatus)}
       </button>
+
+      {subscriptionLoading && !loading && (
+        <div className="mt-4 flex justify-center">
+          <div className="h-3 w-40 rounded-full bg-[#1a1d2e] animate-pulse" />
+        </div>
+      )}
 
       {outOfCredits && !loading && (
         <div className="mt-4 text-center">

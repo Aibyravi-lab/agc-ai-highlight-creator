@@ -199,6 +199,44 @@ class DatabaseService:
             """
         )
 
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS subscriptions (
+
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                user_id INTEGER NOT NULL UNIQUE,
+
+                plan TEXT NOT NULL DEFAULT 'FREE',
+
+                status TEXT NOT NULL DEFAULT 'ACTIVE',
+
+                started_at TEXT NOT NULL,
+
+                expires_at TEXT,
+
+                created_at TEXT NOT NULL,
+
+                updated_at TEXT NOT NULL
+
+            )
+            """
+        )
+
+        # Backfill: give any user that predates the subscriptions table a
+        # default FREE/ACTIVE subscription row.
+        cursor.execute(
+            """
+            INSERT INTO subscriptions (
+                user_id, plan, status, started_at, expires_at, created_at, updated_at
+            )
+            SELECT
+                id, 'FREE', 'ACTIVE', created_at, NULL, created_at, created_at
+            FROM users
+            WHERE id NOT IN (SELECT user_id FROM subscriptions)
+            """
+        )
+
         connection.commit()
 
         connection.close()

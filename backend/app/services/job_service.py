@@ -7,6 +7,7 @@ from app.services.database_service import (
     DatabaseService
 )
 from app.services.auth_service import AuthService
+from app.services.subscription_service import SubscriptionService
 
 
 class JobService:
@@ -510,11 +511,13 @@ class JobService:
         connection.commit()
         connection.close()
 
-        # A credit was deducted when each of these jobs started; since the
-        # job never reached completed/failed on its own (server restart cut
-        # it off mid-flight), refund the credit it consumed.
+        # A credit was deducted when each of these jobs started, unless the
+        # owner was an active PRO subscriber (who is never charged a
+        # credit); since the job never reached completed/failed on its own
+        # (server restart cut it off mid-flight), refund the credit it
+        # consumed.
         for _job_id, user_id in interrupted:
-            if user_id is not None:
+            if user_id is not None and not SubscriptionService.is_pro_active(user_id):
                 AuthService.refund_credit(user_id)
 
         return reconciled

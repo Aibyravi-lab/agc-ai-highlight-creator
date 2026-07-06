@@ -22,6 +22,8 @@ interface StatsPanelProps {
   jobStats: JobStats | null;
   allJobs: PipelineJob[];
   creditsRemaining?: number;
+  isPro?: boolean;
+  subscriptionLoading?: boolean;
 }
 
 interface StatCardProps {
@@ -39,6 +41,15 @@ function StatCard({ label, value, accentBorder, accentText, displayValue }: Stat
         {label}
       </p>
       <p className={`text-4xl font-bold mt-2 ${accentText}`}>{displayValue ?? value}</p>
+    </div>
+  );
+}
+
+function StatCardSkeleton() {
+  return (
+    <div className="rounded-xl border border-[#1e2030] bg-[#0f1117] p-5 animate-pulse">
+      <div className="h-3 w-20 rounded bg-[#1a1d2e]" />
+      <div className="h-8 w-28 rounded bg-[#1a1d2e] mt-3" />
     </div>
   );
 }
@@ -111,7 +122,13 @@ function JobResultDetails({ result }: { result: ExtendedPipelineResult }) {
   );
 }
 
-export function StatsPanel({ jobStats, allJobs, creditsRemaining }: StatsPanelProps) {
+export function StatsPanel({
+  jobStats,
+  allJobs,
+  creditsRemaining,
+  isPro = false,
+  subscriptionLoading = false,
+}: StatsPanelProps) {
   const recentJobs = allJobs.slice().reverse().slice(0, 20);
 
   if (!jobStats && recentJobs.length === 0 && creditsRemaining == null) {
@@ -127,16 +144,28 @@ export function StatsPanel({ jobStats, allJobs, creditsRemaining }: StatsPanelPr
             Credits
           </h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <StatCard
-              label="Credits Remaining"
-              value={creditsRemaining}
-              displayValue={`${creditsRemaining} / ${FREE_CREDITS}`}
-              accentBorder="border-emerald-500/25"
-              accentText="text-emerald-400"
-            />
+            {subscriptionLoading ? (
+              <StatCardSkeleton />
+            ) : isPro ? (
+              <StatCard
+                label="Plan"
+                value={0}
+                displayValue="Unlimited Highlights"
+                accentBorder="border-purple-500/25"
+                accentText="text-purple-400"
+              />
+            ) : (
+              <StatCard
+                label="Credits Remaining"
+                value={creditsRemaining}
+                displayValue={`${creditsRemaining} / ${FREE_CREDITS}`}
+                accentBorder="border-emerald-500/25"
+                accentText="text-emerald-400"
+              />
+            )}
           </div>
 
-          {creditsRemaining <= 0 && (
+          {!subscriptionLoading && !isPro && creditsRemaining <= 0 && (
             <p className="mt-3 text-sm text-gray-400">
               You&apos;ve used all your free AI highlights.
             </p>
