@@ -9,6 +9,7 @@ interface UploadPanelProps {
   onSelectFile: (file: File | null) => void;
   onGenerateHighlights: () => void;
   fileInputKey: number;
+  creditsRemaining: number;
 }
 
 const SUPPORTED_FORMATS_LABEL = "MP4 • MOV • AVI • MKV";
@@ -34,11 +35,13 @@ export function UploadPanel({
   onSelectFile,
   onGenerateHighlights,
   fileInputKey,
+  creditsRemaining,
 }: UploadPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   const isUploading = loading && progressStatus.toLowerCase().startsWith("uploading");
+  const outOfCredits = creditsRemaining <= 0;
 
   const handleFiles = (files: FileList | null) => {
     if (files && files.length > 0) {
@@ -128,17 +131,23 @@ export function UploadPanel({
 
       <button
         onClick={onGenerateHighlights}
-        disabled={loading || !selectedFile}
+        disabled={loading || !selectedFile || outOfCredits}
         className={`mt-5 w-full text-white p-4 rounded-xl font-semibold transition-colors ${
           loading
             ? "bg-green-600/50 cursor-wait"
-            : !selectedFile
+            : !selectedFile || outOfCredits
             ? "bg-green-600/50 cursor-not-allowed"
             : "bg-green-600 hover:bg-green-700 cursor-pointer"
         }`}
       >
         {buttonLabel(loading, progressStatus)}
       </button>
+
+      {outOfCredits && !loading && (
+        <p className="mt-4 text-xs text-yellow-400 text-center leading-relaxed">
+          You have no free credits remaining. Upgrade your plan to continue generating highlights.
+        </p>
+      )}
 
       {isUploading && (
         <p className="mt-4 text-xs text-gray-500 text-center leading-relaxed">

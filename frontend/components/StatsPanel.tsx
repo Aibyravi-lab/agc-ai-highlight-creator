@@ -7,6 +7,7 @@ import {
   downloadResultJson,
 } from "../services/api";
 import type { JobStats, PipelineJob, ExtendedPipelineResult } from "../types/pipeline";
+import { FREE_CREDITS } from "../types/auth";
 
 function parseJobDate(raw: string): string {
   let s = raw.replace(" ", "T");
@@ -20,6 +21,7 @@ function parseJobDate(raw: string): string {
 interface StatsPanelProps {
   jobStats: JobStats | null;
   allJobs: PipelineJob[];
+  creditsRemaining?: number;
 }
 
 interface StatCardProps {
@@ -27,15 +29,16 @@ interface StatCardProps {
   value: number;
   accentBorder: string;
   accentText: string;
+  displayValue?: string;
 }
 
-function StatCard({ label, value, accentBorder, accentText }: StatCardProps) {
+function StatCard({ label, value, accentBorder, accentText, displayValue }: StatCardProps) {
   return (
     <div className={`rounded-xl border ${accentBorder} bg-[#0f1117] p-5`}>
       <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">
         {label}
       </p>
-      <p className={`text-4xl font-bold mt-2 ${accentText}`}>{value}</p>
+      <p className={`text-4xl font-bold mt-2 ${accentText}`}>{displayValue ?? value}</p>
     </div>
   );
 }
@@ -108,15 +111,33 @@ function JobResultDetails({ result }: { result: ExtendedPipelineResult }) {
   );
 }
 
-export function StatsPanel({ jobStats, allJobs }: StatsPanelProps) {
+export function StatsPanel({ jobStats, allJobs, creditsRemaining }: StatsPanelProps) {
   const recentJobs = allJobs.slice().reverse().slice(0, 20);
 
-  if (!jobStats && recentJobs.length === 0) {
+  if (!jobStats && recentJobs.length === 0 && creditsRemaining == null) {
     return null;
   }
 
   return (
     <div className="space-y-6">
+      {/* Credits */}
+      {creditsRemaining != null && (
+        <div>
+          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">
+            Credits
+          </h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <StatCard
+              label="Credits Remaining"
+              value={creditsRemaining}
+              displayValue={`${creditsRemaining} / ${FREE_CREDITS}`}
+              accentBorder="border-emerald-500/25"
+              accentText="text-emerald-400"
+            />
+          </div>
+        </div>
+      )}
+
       {/* System Statistics */}
       {jobStats && (
         <div>

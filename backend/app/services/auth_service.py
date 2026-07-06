@@ -116,6 +116,7 @@ class AuthService:
             "name": name,
             "email": email,
             "created_at": created_at,
+            "credits_remaining": settings.FREE_CREDITS,
         }
 
     @classmethod
@@ -145,7 +146,8 @@ class AuthService:
                 email,
                 password_hash,
                 created_at,
-                last_login
+                last_login,
+                credits_remaining
             FROM users
             WHERE email = ?
             """,
@@ -184,7 +186,8 @@ class AuthService:
                 name,
                 email,
                 created_at,
-                last_login
+                last_login,
+                credits_remaining
             FROM users
             WHERE id = ?
             """,
@@ -216,6 +219,57 @@ class AuthService:
             WHERE id = ?
             """,
             (last_login, user_id)
+        )
+
+        connection.commit()
+
+        connection.close()
+
+    @classmethod
+    def deduct_credit(
+        cls,
+        user_id: int
+    ) -> bool:
+
+        connection = DatabaseService.get_connection()
+
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            UPDATE users
+            SET credits_remaining = credits_remaining - 1
+            WHERE id = ?
+              AND credits_remaining > 0
+            """,
+            (user_id,)
+        )
+
+        connection.commit()
+
+        deducted = cursor.rowcount > 0
+
+        connection.close()
+
+        return deducted
+
+    @classmethod
+    def refund_credit(
+        cls,
+        user_id: int
+    ) -> None:
+
+        connection = DatabaseService.get_connection()
+
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            UPDATE users
+            SET credits_remaining = credits_remaining + 1
+            WHERE id = ?
+            """,
+            (user_id,)
         )
 
         connection.commit()

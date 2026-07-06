@@ -52,8 +52,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    const token = localStorage.getItem("agc_token");
+    if (!token) return;
+    try {
+      setUser(await getCurrentUser(token));
+    } catch {
+      // Ignore transient refresh failures; existing session state is kept.
+    }
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

@@ -253,5 +253,12 @@ class Settings(BaseSettings):
         )
     )
 
+    FREE_CREDITS: int = int(
+        os.getenv(
+            "FREE_CREDITS",
+            "3"
+        )
+    )
+
 
 settings = Settings()

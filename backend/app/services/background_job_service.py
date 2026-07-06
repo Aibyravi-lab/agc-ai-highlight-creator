@@ -5,6 +5,7 @@ from app.services.job_service import JobService
 from app.services.pipeline_service import PipelineService
 from app.services.cleanup_service import CleanupService
 from app.services.logger_service import LoggerService
+from app.services.auth_service import AuthService
 
 
 class BackgroundJobService:
@@ -94,16 +95,24 @@ class BackgroundJobService:
                 f"Job Completed: {job_id}"
             )
 
-        except Exception as error:
+        except BaseException as error:
 
             LoggerService.error(
                 f"Job Failed: {job_id} | {error}"
             )
 
-            JobService.fail_job(
-                job_id=job_id,
-                error=str(error)
-            )
+            try:
+
+                JobService.fail_job(
+                    job_id=job_id,
+                    error=str(error)
+                )
+
+            finally:
+
+                AuthService.refund_credit(
+                    user_id=user_id
+                )
 
         finally:
 

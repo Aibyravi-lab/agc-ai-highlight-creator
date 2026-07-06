@@ -87,7 +87,7 @@ class DatabaseService:
                 raise
 
         cursor.execute(
-            """
+            f"""
             CREATE TABLE IF NOT EXISTS users (
 
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -100,11 +100,24 @@ class DatabaseService:
 
                 created_at TEXT NOT NULL,
 
-                last_login TEXT
+                last_login TEXT,
+
+                credits_remaining INTEGER NOT NULL DEFAULT {settings.FREE_CREDITS}
 
             )
             """
         )
+
+        # Migration: add credits_remaining to existing users tables that predate this column
+        try:
+            cursor.execute(
+                f"ALTER TABLE users ADD COLUMN credits_remaining "
+                f"INTEGER NOT NULL DEFAULT {settings.FREE_CREDITS}"
+            )
+            connection.commit()
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc).lower():
+                raise
 
         cursor.execute(
             """

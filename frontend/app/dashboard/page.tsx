@@ -73,7 +73,7 @@ function DashboardContent({
   } = usePipeline();
 
   const handleLogout = () => {
-    track("User Logged Out");
+    track("logout");
     reset();
     logout();
     router.replace("/login");
@@ -86,9 +86,13 @@ function DashboardContent({
   };
 
   useEffect(() => {
+    track("history_opened");
+    track("projects_opened");
+  }, []);
+
+  useEffect(() => {
     if (result !== null && result !== prevResultRef.current) {
       setFeedbackDismissed(false);
-      track("Feedback Opened");
     }
     prevResultRef.current = result;
   }, [result]);
@@ -130,6 +134,7 @@ function DashboardContent({
             onSelectFile={setSelectedFile}
             onGenerateHighlights={handleGenerateHighlights}
             fileInputKey={fileInputKey}
+            creditsRemaining={user.credits_remaining}
           />
         </section>
 
@@ -150,7 +155,7 @@ function DashboardContent({
 
         {/* System Statistics + Recent Jobs */}
         <section>
-          <StatsPanel jobStats={jobStats} allJobs={allJobs} />
+          <StatsPanel jobStats={jobStats} allJobs={allJobs} creditsRemaining={user.credits_remaining} />
         </section>
 
         {/* History */}

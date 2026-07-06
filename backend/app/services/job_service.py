@@ -6,6 +6,7 @@ from datetime import datetime
 from app.services.database_service import (
     DatabaseService
 )
+from app.services.auth_service import AuthService
 
 
 class JobService:
@@ -477,6 +478,16 @@ class JobService:
 
         cursor.execute(
             """
+            SELECT job_id, user_id
+            FROM jobs
+            WHERE status IN ('pending', 'processing')
+            """
+        )
+
+        interrupted = cursor.fetchall()
+
+        cursor.execute(
+            """
             UPDATE jobs
             SET
                 status = ?,
@@ -498,6 +509,13 @@ class JobService:
 
         connection.commit()
         connection.close()
+
+        # A credit was deducted when each of these jobs started; since the
+        # job never reached completed/failed on its own (server restart cut
+        # it off mid-flight), refund the credit it consumed.
+        for _job_id, user_id in interrupted:
+            if user_id is not None:
+                AuthService.refund_credit(user_id)
 
         return reconciled
 

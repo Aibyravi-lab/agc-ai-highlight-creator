@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 
 from app.services.pipeline_service import PipelineService
 from app.services.job_service import JobService
+from app.services.auth_service import AuthService
 from app.services.background_job_service import (
     BackgroundJobService
 )
@@ -18,6 +19,21 @@ router = APIRouter(
 class PipelineError:
     MAX_CONCURRENT_JOBS = "MAX_CONCURRENT_JOBS"
     SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE"
+    INSUFFICIENT_CREDITS = "INSUFFICIENT_CREDITS"
+
+
+def _insufficient_credits_error() -> HTTPException:
+
+    return HTTPException(
+        status_code=403,
+        detail={
+            "code": PipelineError.INSUFFICIENT_CREDITS,
+            "message": (
+                "You have no free credits remaining. "
+                "Upgrade your plan to continue generating highlights."
+            )
+        }
+    )
 
 
 @router.post("/process")
@@ -86,6 +102,14 @@ def start_video_processing(
             }
         )
 
+    if current_user.get("credits_remaining", 0) <= 0:
+
+        raise _insufficient_credits_error()
+
+    if not AuthService.deduct_credit(user_id):
+
+        raise _insufficient_credits_error()
+
     try:
 
         job_id = (
@@ -112,6 +136,8 @@ def start_video_processing(
         }
 
     except Exception as error:
+
+        AuthService.refund_credit(user_id)
 
         raise HTTPException(
             status_code=500,

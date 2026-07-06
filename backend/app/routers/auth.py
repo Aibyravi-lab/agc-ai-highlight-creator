@@ -64,6 +64,7 @@ def register(
             "name": user["name"],
             "email": user["email"],
             "created_at": user["created_at"],
+            "credits_remaining": user["credits_remaining"],
         }
     }
 
@@ -110,6 +111,7 @@ def login(
             "email": user["email"],
             "created_at": user["created_at"],
             "last_login": user["last_login"],
+            "credits_remaining": user["credits_remaining"],
         }
     }
 
@@ -127,5 +129,6 @@ def me(
             "email": current_user["email"],
             "created_at": current_user["created_at"],
             "last_login": current_user["last_login"],
+            "credits_remaining": current_user["credits_remaining"],
         }
     }

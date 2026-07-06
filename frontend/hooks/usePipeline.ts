@@ -11,6 +11,7 @@ import {
   getProgress,
 } from "../services/api";
 import { track } from "../services/analytics";
+import { useAuth } from "../context/AuthContext";
 import type {
   PipelineJob,
   JobStats,
@@ -49,6 +50,8 @@ export function usePipeline() {
     successMessage: null,
     fileInputKey: 0,
   });
+
+  const { refreshUser } = useAuth();
 
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -110,11 +113,13 @@ export function usePipeline() {
           getJobStats()
             .then((res) => setState((prev) => ({ ...prev, jobStats: res.data || null })))
             .catch((err) => console.error("Stats refresh failed:", err));
+          refreshUser();
         } else if (job.status === "failed") {
           stopPolling();
           setState((prev) => {
             return { ...prev, loading: false, error: job.error || "Processing failed", currentJobId: null };
           });
+          refreshUser();
         } else {
           setState((prev) => {
             const nextProgressStatus = job.message || job.status;
@@ -129,7 +134,7 @@ export function usePipeline() {
     return () => {
       stopPolling();
     };
-  }, [state.currentJobId, stopPolling]);
+  }, [state.currentJobId, stopPolling, refreshUser]);
 
   // Generate highlights - main entry point
   const generateHighlights = useCallback(
