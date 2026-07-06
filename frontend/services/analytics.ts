@@ -17,7 +17,11 @@ type AnalyticsEvent =
   | "Feedback Opened"
   | "Feedback Submitted"
   | "Feedback Skipped"
-  | "logout";
+  | "logout"
+  | "pipeline_started"
+  | "pipeline_completed"
+  | "upload_started"
+  | "upload_completed";
 
 export function track(
   event: AnalyticsEvent,
