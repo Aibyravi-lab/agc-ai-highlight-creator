@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "../context/AuthContext";
-import { track } from "../services/analytics";
 import { Footer } from "../components/Footer";
 
 export default function LandingPage() {
@@ -16,10 +15,6 @@ export default function LandingPage() {
       router.replace("/dashboard");
     }
   }, [loading, user, router]);
-
-  useEffect(() => {
-    track("Landing Viewed");
-  }, []);
 
   return (
     <div className="min-h-screen bg-[#08090d] text-white">
@@ -68,14 +63,12 @@ function Nav() {
           <Link
             href="/login"
             className="hidden sm:block text-sm text-gray-400 hover:text-white transition-colors px-3 py-1.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-500 focus-visible:rounded-lg"
-            onClick={() => track("Login Clicked")}
           >
             Login
           </Link>
           <Link
             href="/register"
             className="text-sm bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded-lg transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-300"
-            onClick={() => track("Register Clicked")}
           >
             Start Free Beta
           </Link>
@@ -96,20 +89,14 @@ function Nav() {
           <Link
             href="/login"
             className="px-2 py-2.5 text-sm text-gray-300 hover:text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-500 focus-visible:rounded-lg"
-            onClick={() => {
-              track("Login Clicked");
-              closeMobileMenu();
-            }}
+            onClick={closeMobileMenu}
           >
             Login
           </Link>
           <Link
             href="/register"
             className="px-2 py-2.5 text-sm text-gray-300 hover:text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-500 focus-visible:rounded-lg"
-            onClick={() => {
-              track("Register Clicked");
-              closeMobileMenu();
-            }}
+            onClick={closeMobileMenu}
           >
             Register
           </Link>
@@ -148,7 +135,7 @@ function Hero() {
       <div className="flex-1 text-center md:text-left">
         <div className="inline-flex items-center gap-2 bg-green-500/10 border border-green-500/20 rounded-full px-4 py-1.5 mb-8">
           <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-          <span className="text-xs text-green-400 font-medium">Public Beta — Now Open</span>
+          <span className="text-xs text-green-400 font-medium">Get 3 Free AI Highlights</span>
         </div>
 
         <h1 className="text-4xl md:text-6xl font-bold leading-tight mb-6">
@@ -166,17 +153,15 @@ function Hero() {
           <Link
             href="/register"
             className="bg-green-600 hover:bg-green-700 text-white font-semibold px-8 py-3.5 rounded-xl text-base transition-colors text-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-300"
-            onClick={() => track("Register Clicked")}
           >
-            Generate Highlights
+            Start Free
           </Link>
-          <a
-            href="#features"
+          <Link
+            href="/pricing"
             className="border border-[#1a1d2e] hover:border-[#2a2d3e] text-gray-300 hover:text-white font-medium px-8 py-3.5 rounded-xl text-base transition-colors text-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-500"
-            onClick={() => track("Learn More Clicked")}
           >
-            Learn More
-          </a>
+            View Pricing
+          </Link>
         </div>
 
         <TrustBadges />
@@ -1012,7 +997,6 @@ function BetaNotice() {
           <Link
             href="/register"
             className="bg-green-600 hover:bg-green-700 text-white font-semibold px-8 py-3.5 rounded-xl text-base transition-colors inline-block focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-300"
-            onClick={() => track("Register Clicked")}
           >
             Join the Beta
           </Link>
@@ -1040,14 +1024,12 @@ function FinalCTA() {
           <Link
             href="/register"
             className="bg-green-600 hover:bg-green-700 text-white font-semibold px-10 py-4 rounded-xl text-base transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-300"
-            onClick={() => track("Register Clicked")}
           >
             Start Free Beta
           </Link>
           <Link
             href="/login"
             className="border border-[#2a2d3e] hover:border-[#3a3d4e] text-gray-300 hover:text-white font-medium px-10 py-4 rounded-xl text-base transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-500"
-            onClick={() => track("Login Clicked")}
           >
             Login
           </Link>

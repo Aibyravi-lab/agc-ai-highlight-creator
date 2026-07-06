@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 
 interface UploadPanelProps {
   selectedFile: File | null;
@@ -144,9 +145,19 @@ export function UploadPanel({
       </button>
 
       {outOfCredits && !loading && (
-        <p className="mt-4 text-xs text-yellow-400 text-center leading-relaxed">
-          You have no free credits remaining. Upgrade your plan to continue generating highlights.
-        </p>
+        <div className="mt-4 text-center">
+          <p className="text-xs text-yellow-400 leading-relaxed">
+            You&apos;ve used all your free credits.
+            <br />
+            Upgrade to continue generating highlights.
+          </p>
+          <Link
+            href="/pricing"
+            className="mt-3 inline-block bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-colors"
+          >
+            Upgrade to Pro
+          </Link>
+        </div>
       )}
 
       {isUploading && (

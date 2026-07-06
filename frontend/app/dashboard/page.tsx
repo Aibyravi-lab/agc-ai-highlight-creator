@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { usePipeline } from "../../hooks/usePipeline";
 import { UploadPanel } from "../../components/UploadPanel";
 import { ProgressPanel } from "../../components/ProgressPanel";
@@ -108,6 +109,12 @@ function DashboardContent({
               <span className="text-gray-500 text-sm">AI Video Intelligence</span>
             </div>
             <div className="flex items-center gap-3">
+              <Link
+                href="/pricing"
+                className="text-sm text-gray-400 hover:text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gray-400 focus-visible:rounded"
+              >
+                Pricing
+              </Link>
               <span className="text-gray-500 text-sm hidden sm:block">{user.name}</span>
               <button
                 onClick={handleLogout}
