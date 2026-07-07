@@ -8,40 +8,31 @@ export const metadata: Metadata = buildPageMetadata({
   path: "/contact",
 });
 
-const SUPPORT_EMAIL = "support@vedzovi.com";
-const BUSINESS_EMAIL = "business@vedzovi.com";
+const CONTACT_EMAIL = "contact@vedzovi.com";
 
 export default function ContactPage() {
   return (
-    <InfoPageShell title="Contact Us" subtitle="We're happy to help.">
-      <InfoSection title="General Support">
+    <InfoPageShell title="Contact Us" subtitle="Vedzovi — AI Video Highlight Generator">
+      <InfoSection title="Email">
         <p>
-          For account issues, bug reports, or general questions, reach out at{" "}
+          For account issues, billing questions, or general support, reach out at{" "}
           <a
-            href={`mailto:${SUPPORT_EMAIL}`}
+            href={`mailto:${CONTACT_EMAIL}`}
             className="text-green-400 hover:text-green-300 transition-colors"
           >
-            {SUPPORT_EMAIL}
+            {CONTACT_EMAIL}
           </a>
           .
         </p>
       </InfoSection>
 
-      <InfoSection title="Business">
-        <p>
-          For partnerships, press, or business inquiries, contact{" "}
-          <a
-            href={`mailto:${BUSINESS_EMAIL}`}
-            className="text-green-400 hover:text-green-300 transition-colors"
-          >
-            {BUSINESS_EMAIL}
-          </a>
-          .
-        </p>
+      <InfoSection title="Business Hours">
+        <p>Monday–Friday</p>
+        <p>9 AM – 6 PM IST</p>
       </InfoSection>
 
       <InfoSection title="Response Time">
-        <p>We typically respond within 24–48 hours.</p>
+        <p>We typically respond within 24–48 business hours.</p>
       </InfoSection>
     </InfoPageShell>
   );

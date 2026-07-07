@@ -9,6 +9,7 @@ const ROUTES = [
   "/contact",
   "/privacy",
   "/terms",
+  "/refund",
   "/pricing",
 ];
 

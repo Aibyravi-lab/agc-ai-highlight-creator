@@ -6,6 +6,7 @@ const FOOTER_LINKS: Array<{ label: string; href: string }> = [
   { label: "Contact", href: "/contact" },
   { label: "Privacy", href: "/privacy" },
   { label: "Terms", href: "/terms" },
+  { label: "Refund", href: "/refund" },
 ];
 
 export function Footer() {
