@@ -260,5 +260,14 @@ class Settings(BaseSettings):
         )
     )
 
+    RAZORPAY_KEY_ID: str = os.getenv(
+        "RAZORPAY_KEY_ID",
+        ""
+    )
+
+    RAZORPAY_KEY_SECRET: str = os.getenv(
+        "RAZORPAY_KEY_SECRET",
+        ""
+    )
 
 settings = Settings()

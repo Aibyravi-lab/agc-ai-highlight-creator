@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import { useSubscription } from "../../hooks/useSubscription";
 import { InfoPageShell } from "../../components/InfoPageShell";
+import { createPaymentOrder, verifyPayment } from "../../services/api";
+import { openRazorpayCheckout } from "../../services/razorpay";
+import type { RazorpayPaymentSuccess } from "../../types/payment";
 
 interface PlanCardProps {
   name: string;
@@ -56,17 +58,22 @@ function PlanCard({ name, price, priceSuffix, features, badge, button, highlight
         ))}
       </ul>
 
-      {button.disabled ? (
-        <span className="block text-center bg-[#1a1d2e] text-gray-500 font-semibold px-6 py-3 rounded-xl text-sm cursor-not-allowed">
-          {button.label}
-        </span>
-      ) : button.onClick ? (
+      {button.onClick ? (
         <button
           onClick={button.onClick}
-          className="block w-full text-center bg-green-600 hover:bg-green-700 text-white font-semibold px-6 py-3 rounded-xl text-sm transition-colors"
+          disabled={button.disabled}
+          className={`block w-full text-center font-semibold px-6 py-3 rounded-xl text-sm transition-colors ${
+            button.disabled
+              ? "bg-[#1a1d2e] text-gray-500 cursor-not-allowed"
+              : "bg-green-600 hover:bg-green-700 text-white"
+          }`}
         >
           {button.label}
         </button>
+      ) : button.disabled ? (
+        <span className="block text-center bg-[#1a1d2e] text-gray-500 font-semibold px-6 py-3 rounded-xl text-sm cursor-not-allowed">
+          {button.label}
+        </span>
       ) : (
         <Link
           href={button.href ?? "#"}
@@ -79,29 +86,120 @@ function PlanCard({ name, price, priceSuffix, features, badge, button, highlight
   );
 }
 
+type CheckoutState =
+  | "idle"
+  | "creating_order"
+  | "opening_checkout"
+  | "awaiting_payment"
+  | "verifying"
+  | "activating"
+  | "done"
+  | "cancelled"
+  | "failed"
+  | "verification_unconfirmed";
+
+// States where a checkout/verification attempt is actively in flight —
+// the Upgrade button stays disabled until we land back on a resting state
+// (idle/cancelled/failed/done) so a second click can't fire a duplicate order.
+const IN_FLIGHT_STATES: CheckoutState[] = [
+  "creating_order",
+  "opening_checkout",
+  "awaiting_payment",
+  "verifying",
+  "activating",
+  "done",
+];
+
+const CHECKOUT_LABELS: Partial<Record<CheckoutState, string>> = {
+  creating_order: "Creating secure payment...",
+  opening_checkout: "Opening Razorpay...",
+  awaiting_payment: "Waiting for payment...",
+  verifying: "Verifying payment...",
+  activating: "Activating Pro...",
+  done: "Done",
+};
+
 export default function PricingPage() {
   const { user, loading: authLoading } = useAuth();
   const isAuthenticated = !authLoading && !!user;
-  const { subscription, loading: subscriptionLoading, upgrade } = useSubscription(isAuthenticated);
-  const router = useRouter();
+  const { subscription, loading: subscriptionLoading, refresh } = useSubscription(isAuthenticated);
 
-  const [upgrading, setUpgrading] = useState(false);
-  const [upgradeError, setUpgradeError] = useState<string | null>(null);
+  const [checkoutState, setCheckoutState] = useState<CheckoutState>("idle");
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [pendingPayment, setPendingPayment] = useState<RazorpayPaymentSuccess | null>(null);
 
   // While auth or subscription is still resolving, we don't yet know the
   // user's plan — avoid rendering a plan-specific button prematurely.
   const isResolving = authLoading || (isAuthenticated && subscriptionLoading);
   const isPro = subscription?.plan === "PRO";
 
-  const handleUpgrade = async () => {
-    setUpgradeError(null);
-    setUpgrading(true);
+  // Warn before leaving the page only while a verification request is
+  // actually in flight — losing that request could leave a captured
+  // payment unconfirmed. The warning disappears as soon as verification
+  // settles (success or failure), matching the guard used for the retry flow.
+  useEffect(() => {
+    if (checkoutState !== "verifying") return;
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [checkoutState]);
+
+  const runVerification = async (payment: RazorpayPaymentSuccess) => {
+    setCheckoutState("verifying");
+
     try {
-      await upgrade();
-      router.push("/dashboard");
+      await verifyPayment(payment);
+      setCheckoutState("activating");
+      await refresh();
+      setPendingPayment(null);
+      setCheckoutState("done");
+    } catch {
+      // Could be a genuine bad signature or a transient network/server
+      // error — either way the payment was captured by Razorpay, so we
+      // keep it around for a manual retry instead of forcing a new charge.
+      setPendingPayment(payment);
+      setCheckoutState("verification_unconfirmed");
+    }
+  };
+
+  const handleRetryVerification = () => {
+    if (!pendingPayment) return;
+    runVerification(pendingPayment);
+  };
+
+  const handleUpgrade = async () => {
+    if (IN_FLIGHT_STATES.includes(checkoutState)) return;
+
+    setCheckoutError(null);
+    setPendingPayment(null);
+    setCheckoutState("creating_order");
+
+    try {
+      const order = await createPaymentOrder("pro");
+
+      setCheckoutState("opening_checkout");
+      await openRazorpayCheckout(order, {
+        onSuccess: (payment) => {
+          runVerification(payment);
+        },
+        onCancel: () => setCheckoutState("cancelled"),
+        onFailure: (reason) => {
+          setCheckoutError(reason);
+          setCheckoutState("failed");
+        },
+      });
+      // Modal is open and awaiting user action — but if the user already
+      // paid, cancelled, or failed faster than this line ran, don't clobber
+      // whatever state the callback above already moved us to.
+      setCheckoutState((state) => (state === "opening_checkout" ? "awaiting_payment" : state));
     } catch (err) {
-      setUpgradeError(err instanceof Error ? err.message : "Upgrade failed. Please try again.");
-      setUpgrading(false);
+      setCheckoutError(err instanceof Error ? err.message : "Unable to start checkout. Please try again.");
+      setCheckoutState("failed");
     }
   };
 
@@ -138,14 +236,41 @@ export default function PricingPage() {
               : isPro
               ? { label: "Current Plan", disabled: true }
               : isAuthenticated
-              ? { label: upgrading ? "Upgrading..." : "Upgrade to Pro", onClick: handleUpgrade }
+              ? checkoutState === "verification_unconfirmed"
+                ? { label: "Awaiting confirmation...", disabled: true }
+                : {
+                    label: CHECKOUT_LABELS[checkoutState] ?? "Upgrade to Pro",
+                    onClick: handleUpgrade,
+                    disabled: IN_FLIGHT_STATES.includes(checkoutState),
+                  }
               : { label: "Sign in to Upgrade", href: "/login" }
           }
         />
       </div>
 
-      {upgradeError && (
-        <p className="mt-4 text-sm text-red-400 text-center">{upgradeError}</p>
+      {checkoutState === "done" && (
+        <p className="mt-4 text-sm text-green-400 text-center">
+          Payment verified! You&apos;re now on the Pro plan.
+        </p>
+      )}
+      {checkoutState === "cancelled" && (
+        <p className="mt-4 text-sm text-gray-400 text-center">Checkout cancelled.</p>
+      )}
+      {checkoutState === "failed" && checkoutError && (
+        <p className="mt-4 text-sm text-red-400 text-center">{checkoutError}</p>
+      )}
+      {checkoutState === "verification_unconfirmed" && (
+        <div className="mt-4 text-center">
+          <p className="text-sm text-yellow-400 mb-2">
+            We received your payment but couldn&apos;t confirm it yet.
+          </p>
+          <button
+            onClick={handleRetryVerification}
+            className="text-sm font-semibold text-green-400 hover:text-green-300 underline"
+          >
+            Retry Verification
+          </button>
+        </div>
       )}
     </InfoPageShell>
   );

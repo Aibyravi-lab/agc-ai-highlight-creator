@@ -315,6 +315,24 @@ export async function upgradeToPro() {
   }) as Promise<import("../types/subscription").SubscriptionInfo>;
 }
 
+export async function createPaymentOrder(plan: string) {
+  return authedRequest("/payments/create-order", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ plan }),
+  }) as Promise<import("../types/payment").RazorpayOrder>;
+}
+
+export async function verifyPayment(
+  payment: import("../types/payment").RazorpayPaymentSuccess
+) {
+  return authedRequest("/payments/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payment),
+  }) as Promise<{ success: boolean; plan: string; status: string }>;
+}
+
 export async function getFeedback() {
   return authedRequest("/feedback") as Promise<{
     success: boolean;
