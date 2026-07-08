@@ -1,6 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
 
-from app.services.pipeline_service import PipelineService
 from app.services.job_service import JobService
 from app.services.auth_service import AuthService
 from app.services.subscription_service import SubscriptionService
@@ -21,6 +20,7 @@ class PipelineError:
     MAX_CONCURRENT_JOBS = "MAX_CONCURRENT_JOBS"
     SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE"
     INSUFFICIENT_CREDITS = "INSUFFICIENT_CREDITS"
+    ENDPOINT_REMOVED = "ENDPOINT_REMOVED"
 
 
 def _insufficient_credits_error() -> HTTPException:
@@ -43,24 +43,20 @@ def process_video(
     current_user: dict = Depends(get_current_user)
 ):
 
-    try:
-
-        result = PipelineService.process_video(
-            video_path,
-            user_id=current_user["id"]
-        )
-
-        return {
-            "success": True,
-            "data": result
+    # AGC-062.3: retired — this route ran the AI pipeline synchronously
+    # with no subscription/credit enforcement, unlike /pipeline/start.
+    # Kept registered (rather than deleted) so callers get an explicit
+    # 410 instead of a generic 404.
+    raise HTTPException(
+        status_code=410,
+        detail={
+            "code": PipelineError.ENDPOINT_REMOVED,
+            "message": (
+                "This endpoint has been retired. "
+                "Use POST /pipeline/start."
+            )
         }
-
-    except Exception as error:
-
-        raise HTTPException(
-            status_code=500,
-            detail=str(error)
-        )
+    )
 
 
 @router.post("/start")
