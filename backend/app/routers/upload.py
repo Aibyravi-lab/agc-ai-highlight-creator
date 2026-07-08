@@ -196,9 +196,16 @@ async def upload_video(
 
     except Exception as error:
 
+        LoggerService.error(
+            f"Upload failed for user {user_id}: {error}"
+        )
+
         raise HTTPException(
             status_code=500,
-            detail=f"Upload failed: {error}"
+            detail={
+                "code": "INTERNAL_ERROR",
+                "message": "Unexpected server error."
+            }
         )
 
     # ── 8. Cache and return ───────────────────────────────────

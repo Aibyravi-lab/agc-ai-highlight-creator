@@ -7,6 +7,7 @@ from app.services.background_job_service import (
     BackgroundJobService
 )
 from app.config.config import settings
+from app.services.logger_service import LoggerService
 from app.dependencies import get_current_user
 
 
@@ -138,9 +139,16 @@ def start_video_processing(
 
         AuthService.refund_credit(user_id)
 
+        LoggerService.error(
+            f"Pipeline job start failed for user {user_id}: {error}"
+        )
+
         raise HTTPException(
             status_code=500,
-            detail=str(error)
+            detail={
+                "code": "INTERNAL_ERROR",
+                "message": "Unexpected server error."
+            }
         )
 
 

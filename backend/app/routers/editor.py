@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from app.services.video_editor_service import VideoEditorService
+from app.services.logger_service import LoggerService
 from app.dependencies import get_current_user
 
 
@@ -30,7 +31,13 @@ def create_clip(
         }
 
     except Exception as error:
+        LoggerService.error(
+            f"Clip creation failed: {error}"
+        )
         raise HTTPException(
             status_code=500,
-            detail=str(error)
+            detail={
+                "code": "INTERNAL_ERROR",
+                "message": "Unexpected server error."
+            }
         )

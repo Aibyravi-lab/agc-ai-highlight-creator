@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from app.services.frame_service import FrameService
+from app.services.logger_service import LoggerService
 from app.dependencies import get_current_user
 
 
@@ -24,7 +25,13 @@ def extract_frames(
         }
 
     except Exception as error:
+        LoggerService.error(
+            f"Frame extraction failed: {error}"
+        )
         raise HTTPException(
             status_code=500,
-            detail=str(error)
+            detail={
+                "code": "INTERNAL_ERROR",
+                "message": "Unexpected server error."
+            }
         )

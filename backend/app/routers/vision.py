@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from app.services.vision_service import VisionService
+from app.services.logger_service import LoggerService
 from app.dependencies import get_current_user
 
 
@@ -24,7 +25,13 @@ def analyze_frame(
         }
 
     except Exception as error:
+        LoggerService.error(
+            f"Vision analysis failed: {error}"
+        )
         raise HTTPException(
             status_code=500,
-            detail=str(error)
+            detail={
+                "code": "INTERNAL_ERROR",
+                "message": "Unexpected server error."
+            }
         )

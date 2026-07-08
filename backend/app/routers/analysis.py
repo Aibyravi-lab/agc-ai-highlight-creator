@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pathlib import Path
 
 from app.services.video_service import get_video_metadata
+from app.services.logger_service import LoggerService
 from app.dependencies import get_current_user
 
 
@@ -43,7 +44,13 @@ def analyze_video(
         )
 
     except Exception as e:
+        LoggerService.error(
+            f"Video analysis failed for {filename}: {e}"
+        )
         raise HTTPException(
             status_code=500,
-            detail=str(e)
+            detail={
+                "code": "INTERNAL_ERROR",
+                "message": "Unexpected server error."
+            }
         )
