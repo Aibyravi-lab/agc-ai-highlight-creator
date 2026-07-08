@@ -24,6 +24,21 @@ class PipelineError:
     ENDPOINT_REMOVED = "ENDPOINT_REMOVED"
 
 
+def _sanitize_job(job: dict) -> dict:
+
+    if job.get("status") != "failed":
+        return job
+
+    sanitized = dict(job)
+
+    sanitized["error"] = {
+        "code": "INTERNAL_ERROR",
+        "message": "Unexpected server error."
+    }
+
+    return sanitized
+
+
 def _insufficient_credits_error() -> HTTPException:
 
     return HTTPException(
@@ -161,15 +176,20 @@ def get_all_jobs(
         user_id=current_user["id"]
     )
 
+    sanitized_jobs = [
+        _sanitize_job(job)
+        for job in jobs
+    ]
+
     return {
 
         "success": True,
 
         "count":
-        len(jobs),
+        len(sanitized_jobs),
 
         "data":
-        jobs
+        sanitized_jobs
 
     }
 
@@ -202,7 +222,7 @@ def get_job_status(
 
         "success": True,
 
-        "data": job
+        "data": _sanitize_job(job)
 
     }
 
