@@ -30,19 +30,3 @@ def get_my_subscription(
         "status": subscription["status"],
         "creditsRemaining": current_user["credits_remaining"],
     }
-
-
-@router.post("/mock-upgrade")
-def mock_upgrade(
-    current_user: dict = Depends(get_current_user)
-):
-
-    subscription = SubscriptionService.upgrade_to_pro(
-        current_user["id"]
-    )
-
-    return {
-        "plan": subscription["plan"],
-        "status": subscription["status"],
-        "creditsRemaining": current_user["credits_remaining"],
-    }

@@ -225,7 +225,7 @@ export default function PricingPage() {
         />
         <PlanCard
           name="Pro"
-          price="₹499"
+          price="₹299"
           priceSuffix="/month"
           badge={!isResolving && isPro ? "Active" : undefined}
           highlighted
