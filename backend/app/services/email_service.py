@@ -1,8 +1,32 @@
+import resend
+
 from app.config.config import settings
 from app.services.logger_service import LoggerService
 
 
+resend.api_key = settings.RESEND_API_KEY
+
+
 class EmailService:
+
+    @staticmethod
+    def _to_html(
+        body: str
+    ) -> str:
+
+        escaped = (
+            body
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+        )
+
+        paragraphs = escaped.split("\n\n")
+
+        return "".join(
+            f"<p>{paragraph.replace(chr(10), '<br>')}</p>"
+            for paragraph in paragraphs
+        )
 
     @staticmethod
     def send(
@@ -11,25 +35,29 @@ class EmailService:
         body: str
     ) -> None:
 
-        # No email provider is wired up yet (Resend is planned). Sending is
-        # a log statement today; swapping in Resend later means replacing
-        # the body of the try block only — no caller changes. The message
-        # body is never logged (it may carry sensitive content such as a
-        # password reset link), and a send failure must never escape this
-        # method — it runs inside a FastAPI BackgroundTask, where an
-        # uncaught exception would be lost/unhandled.
+        # Provider is Resend. The message body (which may carry sensitive
+        # content such as a password reset link) and the API key are never
+        # logged — only sanitized lifecycle events. A send failure must
+        # never escape this method — it runs inside a FastAPI
+        # BackgroundTask, where an uncaught exception would be lost/unhandled.
         try:
 
-            LoggerService.info(
-                f"EMAIL from={settings.EMAIL_FROM_ADDRESS} to={to} "
-                f"subject={subject!r} status=sent"
-            )
+            LoggerService.info("EMAIL queued")
+
+            resend.Emails.send({
+                "from": settings.EMAIL_FROM_ADDRESS,
+                "to": to,
+                "subject": subject,
+                "text": body,
+                "html": EmailService._to_html(body),
+            })
+
+            LoggerService.info("EMAIL delivered")
 
         except Exception as exc:
 
             LoggerService.error(
-                f"EMAIL from={settings.EMAIL_FROM_ADDRESS} to={to} "
-                f"subject={subject!r} status=failed error={exc}"
+                f"EMAIL failed error_type={exc.__class__.__name__}"
             )
 
     @classmethod
