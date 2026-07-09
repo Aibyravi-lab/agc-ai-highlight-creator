@@ -75,3 +75,26 @@ export function logout(): void {
     localStorage.removeItem("agc_token");
   }
 }
+
+export async function forgotPassword(email: string): Promise<{ message: string }> {
+  const data = await authRequest<{ message: string }>("/auth/forgot-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+
+  return { message: data.message };
+}
+
+export async function resetPassword(
+  token: string,
+  newPassword: string
+): Promise<{ message: string }> {
+  const data = await authRequest<{ message: string }>("/auth/reset-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, new_password: newPassword }),
+  });
+
+  return { message: data.message };
+}

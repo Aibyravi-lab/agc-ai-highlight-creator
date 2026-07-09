@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends
 from pydantic import BaseModel, EmailStr
 
 from app.services.auth_service import AuthService
+from app.services.password_reset_service import PasswordResetService
 from app.dependencies import get_current_user
 
 
@@ -22,6 +23,24 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+GENERIC_FORGOT_PASSWORD_RESPONSE = {
+    "success": True,
+    "message": (
+        "If an account exists for that email, "
+        "a password reset link has been sent."
+    )
+}
+
+
 @router.post("/register")
 def register(
     body: RegisterRequest
@@ -38,11 +57,15 @@ def register(
             detail="Email already registered"
         )
 
-    if len(body.password) < 8:
+    password_error = AuthService.validate_password_strength(
+        body.password
+    )
+
+    if password_error:
 
         raise HTTPException(
             status_code=400,
-            detail="Password must be at least 8 characters"
+            detail=password_error
         )
 
     user = AuthService.create_user(
@@ -131,4 +154,55 @@ def me(
             "last_login": current_user["last_login"],
             "credits_remaining": current_user["credits_remaining"],
         }
+    }
+
+
+@router.post("/forgot-password")
+def forgot_password(
+    body: ForgotPasswordRequest,
+    background_tasks: BackgroundTasks
+):
+
+    # The entire lookup/throttle/issue/send flow runs after this response is
+    # sent, so its outcome (and timing) can never differ based on whether
+    # the email exists, is throttled, or a token was issued.
+    background_tasks.add_task(
+        PasswordResetService.request_reset,
+        body.email
+    )
+
+    return GENERIC_FORGOT_PASSWORD_RESPONSE
+
+
+@router.post("/reset-password")
+def reset_password(
+    body: ResetPasswordRequest
+):
+
+    password_error = AuthService.validate_password_strength(
+        body.new_password
+    )
+
+    if password_error:
+
+        raise HTTPException(
+            status_code=400,
+            detail=password_error
+        )
+
+    success = PasswordResetService.reset_password(
+        token=body.token,
+        new_password=body.new_password
+    )
+
+    if not success:
+
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid or expired reset token"
+        )
+
+    return {
+        "success": True,
+        "message": "Password has been reset successfully"
     }

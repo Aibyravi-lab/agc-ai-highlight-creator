@@ -237,6 +237,35 @@ class DatabaseService:
             """
         )
 
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS password_resets (
+
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                user_id INTEGER NOT NULL,
+
+                token_hash TEXT NOT NULL UNIQUE,
+
+                created_at TEXT NOT NULL,
+
+                expires_at TEXT NOT NULL,
+
+                used INTEGER NOT NULL DEFAULT 0,
+
+                FOREIGN KEY (user_id) REFERENCES users(id)
+
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_password_resets_user_id
+            ON password_resets(user_id)
+            """
+        )
+
         connection.commit()
 
         connection.close()

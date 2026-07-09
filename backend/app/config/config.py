@@ -270,4 +270,30 @@ class Settings(BaseSettings):
         ""
     )
 
+    PASSWORD_RESET_TOKEN_EXPIRY_MINUTES: int = int(
+        os.getenv(
+            "PASSWORD_RESET_TOKEN_EXPIRY_MINUTES",
+            "30"
+        )
+    )
+
+    PASSWORD_RESET_MAX_PER_HOUR: int = int(
+        os.getenv(
+            "PASSWORD_RESET_MAX_PER_HOUR",
+            "3"
+        )
+    )
+
+    PASSWORD_RESET_COOLDOWN_SECONDS: int = int(
+        os.getenv(
+            "PASSWORD_RESET_COOLDOWN_SECONDS",
+            "60"
+        )
+    )
+
+    EMAIL_FROM_ADDRESS: str = os.getenv(
+        "EMAIL_FROM_ADDRESS",
+        "noreply@vedzovi.com"
+    )
+
 settings = Settings()

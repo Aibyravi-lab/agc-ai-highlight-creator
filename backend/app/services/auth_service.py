@@ -12,6 +12,17 @@ from app.services.subscription_service import SubscriptionService
 class AuthService:
 
     @staticmethod
+    def validate_password_strength(
+        password: str
+    ) -> Optional[str]:
+
+        if len(password) < 8:
+
+            return "Password must be at least 8 characters"
+
+        return None
+
+    @staticmethod
     def hash_password(
         password: str
     ) -> str:
