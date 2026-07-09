@@ -1,4 +1,4 @@
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends, Request
 from pydantic import BaseModel, EmailStr
 
 from app.services.auth_service import AuthService
@@ -160,12 +160,26 @@ def me(
 @router.post("/forgot-password")
 def forgot_password(
     body: ForgotPasswordRequest,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    request: Request
 ):
 
-    # The entire lookup/throttle/issue/send flow runs after this response is
-    # sent, so its outcome (and timing) can never differ based on whether
-    # the email exists, is throttled, or a token was issued.
+    # IP throttling runs synchronously, but it depends only on request
+    # volume from the caller, not on whether the email exists, so it
+    # cannot be used to enumerate accounts.
+    if PasswordResetService.is_ip_throttled(
+        request.client.host,
+        "forgot-password"
+    ):
+
+        raise HTTPException(
+            status_code=429,
+            detail="Too many requests. Please try again later."
+        )
+
+    # The lookup/per-user-throttle/issue/send flow runs after this response
+    # is sent, so its outcome (and timing) can never differ based on
+    # whether the email exists, is throttled, or a token was issued.
     background_tasks.add_task(
         PasswordResetService.request_reset,
         body.email
@@ -176,8 +190,19 @@ def forgot_password(
 
 @router.post("/reset-password")
 def reset_password(
-    body: ResetPasswordRequest
+    body: ResetPasswordRequest,
+    request: Request
 ):
+
+    if PasswordResetService.is_ip_throttled(
+        request.client.host,
+        "reset-password"
+    ):
+
+        raise HTTPException(
+            status_code=429,
+            detail="Too many requests. Please try again later."
+        )
 
     password_error = AuthService.validate_password_strength(
         body.new_password

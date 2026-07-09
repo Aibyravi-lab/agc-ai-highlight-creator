@@ -22,6 +22,64 @@ class PasswordResetService:
         ).hexdigest()
 
     @classmethod
+    def is_ip_throttled(
+        cls,
+        ip_address: str,
+        endpoint: str
+    ) -> bool:
+        """
+        Per-IP, per-endpoint rate limit shared by both the forgot-password
+        and reset-password endpoints. This is the only defense against
+        anonymous token-guessing on reset-password, since no user_id is
+        known until a token is validated. An attempt is only recorded when
+        the caller is not already throttled, so a sustained flood can't
+        grow the table unbounded.
+        """
+
+        now = datetime.utcnow()
+
+        window_start = now - timedelta(
+            minutes=settings.PASSWORD_RESET_ATTEMPT_WINDOW_MINUTES
+        )
+
+        connection = DatabaseService.get_connection()
+
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM password_reset_attempts
+            WHERE ip_address = ? AND endpoint = ? AND created_at > ?
+            """,
+            (ip_address, endpoint, window_start.isoformat())
+        )
+
+        count = cursor.fetchone()[0]
+
+        if count >= settings.PASSWORD_RESET_ATTEMPT_MAX_PER_IP:
+
+            connection.close()
+
+            return True
+
+        cursor.execute(
+            """
+            INSERT INTO password_reset_attempts (
+                ip_address, endpoint, created_at
+            )
+            VALUES (?, ?, ?)
+            """,
+            (ip_address, endpoint, now.isoformat())
+        )
+
+        connection.commit()
+
+        connection.close()
+
+        return False
+
+    @classmethod
     def _is_throttled(
         cls,
         user_id: int

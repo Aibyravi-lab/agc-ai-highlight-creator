@@ -266,6 +266,29 @@ class DatabaseService:
             """
         )
 
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS password_reset_attempts (
+
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                ip_address TEXT NOT NULL,
+
+                endpoint TEXT NOT NULL,
+
+                created_at TEXT NOT NULL
+
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_password_reset_attempts_ip_endpoint
+            ON password_reset_attempts(ip_address, endpoint, created_at)
+            """
+        )
+
         connection.commit()
 
         connection.close()

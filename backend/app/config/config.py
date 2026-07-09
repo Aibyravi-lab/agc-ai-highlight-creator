@@ -291,6 +291,20 @@ class Settings(BaseSettings):
         )
     )
 
+    PASSWORD_RESET_ATTEMPT_MAX_PER_IP: int = int(
+        os.getenv(
+            "PASSWORD_RESET_ATTEMPT_MAX_PER_IP",
+            "10"
+        )
+    )
+
+    PASSWORD_RESET_ATTEMPT_WINDOW_MINUTES: int = int(
+        os.getenv(
+            "PASSWORD_RESET_ATTEMPT_WINDOW_MINUTES",
+            "15"
+        )
+    )
+
     EMAIL_FROM_ADDRESS: str = os.getenv(
         "EMAIL_FROM_ADDRESS",
         "noreply@vedzovi.com"
