@@ -86,6 +86,10 @@ class PipelineVideoPathValidationTests(unittest.TestCase):
             "is_accepting_jobs",
             return_value=True
         ), patch.object(
+            pipeline_router.RateLimitService,
+            "is_rate_limited",
+            return_value=False
+        ), patch.object(
             pipeline_router.JobService,
             "get_running_job_count",
             return_value=0

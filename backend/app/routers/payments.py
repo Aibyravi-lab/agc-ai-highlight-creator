@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from app.config.config import settings
 from app.dependencies import get_current_user
 from app.services.payment_service import (
     DuplicatePaymentError,
@@ -11,6 +12,7 @@ from app.services.payment_service import (
     PaymentService,
     UnsupportedPlanError,
 )
+from app.services.rate_limit_service import RateLimitService
 
 router = APIRouter(
     prefix="/payments",
@@ -72,6 +74,18 @@ def verify_payment(
 ):
 
     user_id = current_user["id"]
+
+    if RateLimitService.is_rate_limited(
+        key=f"user:{user_id}",
+        endpoint="payment_verify",
+        max_attempts=settings.PAYMENT_VERIFY_RATE_LIMIT_MAX_PER_MINUTE,
+        window_seconds=60
+    ):
+
+        raise HTTPException(
+            status_code=429,
+            detail="Too many requests. Please try again later."
+        )
 
     try:
         PaymentService.verify_payment(

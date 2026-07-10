@@ -38,6 +38,14 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "UPLOAD_FOLDER", str(tmp_path))
     monkeypatch.setattr(settings, "MAX_VIDEO_DURATION_MINUTES", 10)
     monkeypatch.setattr(upload_router_module, "MAX_FILE_SIZE_BYTES", 10 * 1024 * 1024)
+    # AGC-069: this fixture builds a standalone app that never calls
+    # DatabaseService.initialize(), so the real rate limiter isn't
+    # exercised here (that's covered by test_rate_limiting.py).
+    monkeypatch.setattr(
+        upload_router_module.RateLimitService,
+        "is_rate_limited",
+        lambda *args, **kwargs: False,
+    )
 
     app = FastAPI()
     app.include_router(upload_router_module.router)

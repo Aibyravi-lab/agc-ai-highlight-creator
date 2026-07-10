@@ -18,6 +18,7 @@ from app.dependencies import get_current_user
 from app.services.file_safety_service import FileSafetyService
 from app.services.logger_service import LoggerService
 from app.services.mime_validation_service import MimeValidationService
+from app.services.rate_limit_service import RateLimitService
 from app.services.upload_cache_service import UploadCacheService
 from app.services.video_service import get_video_metadata
 
@@ -62,6 +63,7 @@ class UploadError:
     DUPLICATE_UPLOAD = "DUPLICATE_UPLOAD"
     VIDEO_TOO_LONG = "VIDEO_TOO_LONG"
     INVALID_VIDEO_METADATA = "INVALID_VIDEO_METADATA"
+    RATE_LIMITED = "RATE_LIMITED"
 
 
 def _sanitize_stem(raw_stem: str) -> str:
@@ -176,6 +178,22 @@ async def upload_video(
     # first job to finish could delete the file still in use by the
     # second. Every upload must always write its own new file.
     user_id = current_user["id"]
+
+    # ── 5b. Rate limit ────────────────────────────────────────
+    if RateLimitService.is_rate_limited(
+        key=f"user:{user_id}",
+        endpoint="upload",
+        max_attempts=settings.UPLOAD_RATE_LIMIT_MAX_PER_HOUR,
+        window_seconds=3600
+    ):
+
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "code": UploadError.RATE_LIMITED,
+                "message": "Too many requests. Please try again later."
+            }
+        )
 
     # ── 6. Sanitize filename ──────────────────────────────────
     raw_stem = Path(bare_name).stem

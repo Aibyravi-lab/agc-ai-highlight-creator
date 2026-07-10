@@ -340,6 +340,43 @@ class Settings(BaseSettings):
         )
     )
 
+    # AGC-069: global rate limiter defaults. All window-based, per
+    # RateLimitService (a generalization of the AGC-063.6 IP throttle).
+    LOGIN_RATE_LIMIT_MAX_PER_MINUTE: int = int(
+        os.getenv(
+            "LOGIN_RATE_LIMIT_MAX_PER_MINUTE",
+            "5"
+        )
+    )
+
+    REGISTER_RATE_LIMIT_MAX_PER_MINUTE: int = int(
+        os.getenv(
+            "REGISTER_RATE_LIMIT_MAX_PER_MINUTE",
+            "5"
+        )
+    )
+
+    UPLOAD_RATE_LIMIT_MAX_PER_HOUR: int = int(
+        os.getenv(
+            "UPLOAD_RATE_LIMIT_MAX_PER_HOUR",
+            "10"
+        )
+    )
+
+    PIPELINE_START_RATE_LIMIT_MAX_PER_HOUR: int = int(
+        os.getenv(
+            "PIPELINE_START_RATE_LIMIT_MAX_PER_HOUR",
+            "20"
+        )
+    )
+
+    PAYMENT_VERIFY_RATE_LIMIT_MAX_PER_MINUTE: int = int(
+        os.getenv(
+            "PAYMENT_VERIFY_RATE_LIMIT_MAX_PER_MINUTE",
+            "10"
+        )
+    )
+
     EMAIL_FROM_ADDRESS: str = os.getenv(
         "EMAIL_FROM_ADDRESS",
         "noreply@vedzovi.com"
@@ -348,6 +385,23 @@ class Settings(BaseSettings):
     RESEND_API_KEY: str = os.getenv(
         "RESEND_API_KEY",
         ""
+    )
+
+    # AGC-070: email verification, reusing the same token/expiry pattern as
+    # password reset. Links live longer (24h) since verification is not as
+    # time-sensitive as a password reset.
+    EMAIL_VERIFICATION_TOKEN_EXPIRY_MINUTES: int = int(
+        os.getenv(
+            "EMAIL_VERIFICATION_TOKEN_EXPIRY_MINUTES",
+            "1440"
+        )
+    )
+
+    RESEND_VERIFICATION_RATE_LIMIT_MAX_PER_HOUR: int = int(
+        os.getenv(
+            "RESEND_VERIFICATION_RATE_LIMIT_MAX_PER_HOUR",
+            "5"
+        )
     )
 
 settings = Settings()

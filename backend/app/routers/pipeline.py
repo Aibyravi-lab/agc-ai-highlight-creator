@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from app.services.job_service import JobService
 from app.services.auth_service import AuthService
 from app.services.subscription_service import SubscriptionService
+from app.services.rate_limit_service import RateLimitService
 from app.services.background_job_service import (
     BackgroundJobService
 )
@@ -27,6 +28,7 @@ class PipelineError:
     INSUFFICIENT_CREDITS = "INSUFFICIENT_CREDITS"
     ENDPOINT_REMOVED = "ENDPOINT_REMOVED"
     INVALID_VIDEO_PATH = "INVALID_VIDEO_PATH"
+    RATE_LIMITED = "RATE_LIMITED"
 
 
 def _sanitize_job(job: dict) -> dict:
@@ -110,6 +112,21 @@ def start_video_processing(
                     "Server is shutting down. "
                     "Please try again shortly."
                 )
+            }
+        )
+
+    if RateLimitService.is_rate_limited(
+        key=f"user:{user_id}",
+        endpoint="pipeline_start",
+        max_attempts=settings.PIPELINE_START_RATE_LIMIT_MAX_PER_HOUR,
+        window_seconds=3600
+    ):
+
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "code": PipelineError.RATE_LIMITED,
+                "message": "Too many requests. Please try again later."
             }
         )
 

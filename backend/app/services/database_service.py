@@ -102,7 +102,9 @@ class DatabaseService:
 
                 last_login TEXT,
 
-                credits_remaining INTEGER NOT NULL DEFAULT {settings.FREE_CREDITS}
+                credits_remaining INTEGER NOT NULL DEFAULT {settings.FREE_CREDITS},
+
+                email_verified INTEGER NOT NULL DEFAULT 0
 
             )
             """
@@ -113,6 +115,29 @@ class DatabaseService:
             cursor.execute(
                 f"ALTER TABLE users ADD COLUMN credits_remaining "
                 f"INTEGER NOT NULL DEFAULT {settings.FREE_CREDITS}"
+            )
+            connection.commit()
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc).lower():
+                raise
+
+        # AGC-070: add email_verified to existing users tables that predate
+        # this column. The ALTER TABLE below only succeeds the first time
+        # it runs against a pre-AGC-070 database (every later startup hits
+        # "duplicate column name" and skips straight to the except branch),
+        # so the UPDATE that follows it fires exactly once, and only against
+        # rows that existed before email verification was enforced. It
+        # backfills every one of those existing users to email_verified=1
+        # so current beta users are never locked out of login. Any user
+        # inserted after this migration goes through AuthService.create_user,
+        # which always explicitly inserts email_verified=0.
+        try:
+            cursor.execute(
+                "ALTER TABLE users ADD COLUMN email_verified "
+                "INTEGER NOT NULL DEFAULT 0"
+            )
+            cursor.execute(
+                "UPDATE users SET email_verified = 1"
             )
             connection.commit()
         except sqlite3.OperationalError as exc:
@@ -299,6 +324,38 @@ class DatabaseService:
             """
         )
 
+        # AGC-070: email verification tokens, same shape and single-use
+        # semantics as password_resets, scoped to a different purpose so
+        # the hardened password reset flow above is left untouched.
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS email_verifications (
+
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                user_id INTEGER NOT NULL,
+
+                token_hash TEXT NOT NULL UNIQUE,
+
+                created_at TEXT NOT NULL,
+
+                expires_at TEXT NOT NULL,
+
+                used INTEGER NOT NULL DEFAULT 0,
+
+                FOREIGN KEY (user_id) REFERENCES users(id)
+
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_email_verifications_user_id
+            ON email_verifications(user_id)
+            """
+        )
+
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS password_reset_attempts (
@@ -319,6 +376,32 @@ class DatabaseService:
             """
             CREATE INDEX IF NOT EXISTS idx_password_reset_attempts_ip_endpoint
             ON password_reset_attempts(ip_address, endpoint, created_at)
+            """
+        )
+
+        # AGC-069: generic sliding-window rate limiter shared by every
+        # rate-limited endpoint (login, register, upload, pipeline start,
+        # payment verify, and — via RateLimitService — password reset).
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS rate_limit_attempts (
+
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                key_value TEXT NOT NULL,
+
+                endpoint TEXT NOT NULL,
+
+                created_at TEXT NOT NULL
+
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_rate_limit_attempts_key_endpoint
+            ON rate_limit_attempts(key_value, endpoint, created_at)
             """
         )
 

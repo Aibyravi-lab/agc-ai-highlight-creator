@@ -8,6 +8,7 @@ from app.services.auth_service import AuthService
 from app.services.database_service import DatabaseService
 from app.services.email_service import EmailService
 from app.services.logger_service import LoggerService
+from app.services.rate_limit_service import RateLimitService
 
 
 class PasswordResetService:
@@ -31,53 +32,20 @@ class PasswordResetService:
         Per-IP, per-endpoint rate limit shared by both the forgot-password
         and reset-password endpoints. This is the only defense against
         anonymous token-guessing on reset-password, since no user_id is
-        known until a token is validated. An attempt is only recorded when
-        the caller is not already throttled, so a sustained flood can't
-        grow the table unbounded.
+        known until a token is validated. Delegates to the generic
+        RateLimitService (AGC-069) introduced to share this mechanism
+        across every rate-limited endpoint; limits are unchanged from
+        AGC-063.6.
         """
 
-        now = datetime.utcnow()
-
-        window_start = now - timedelta(
-            minutes=settings.PASSWORD_RESET_ATTEMPT_WINDOW_MINUTES
-        )
-
-        connection = DatabaseService.get_connection()
-
-        cursor = connection.cursor()
-
-        cursor.execute(
-            """
-            SELECT COUNT(*)
-            FROM password_reset_attempts
-            WHERE ip_address = ? AND endpoint = ? AND created_at > ?
-            """,
-            (ip_address, endpoint, window_start.isoformat())
-        )
-
-        count = cursor.fetchone()[0]
-
-        if count >= settings.PASSWORD_RESET_ATTEMPT_MAX_PER_IP:
-
-            connection.close()
-
-            return True
-
-        cursor.execute(
-            """
-            INSERT INTO password_reset_attempts (
-                ip_address, endpoint, created_at
+        return RateLimitService.is_rate_limited(
+            key=ip_address,
+            endpoint=endpoint,
+            max_attempts=settings.PASSWORD_RESET_ATTEMPT_MAX_PER_IP,
+            window_seconds=(
+                settings.PASSWORD_RESET_ATTEMPT_WINDOW_MINUTES * 60
             )
-            VALUES (?, ?, ?)
-            """,
-            (ip_address, endpoint, now.isoformat())
         )
-
-        connection.commit()
-
-        connection.close()
-
-        return False
 
     @classmethod
     def _is_throttled(
