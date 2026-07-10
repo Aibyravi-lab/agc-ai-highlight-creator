@@ -103,6 +103,15 @@ export function usePipeline() {
         if (job.status === "completed") {
           stopPolling();
           track("pipeline_completed");
+          track(
+            "Pipeline Completed",
+            job.result?.stats?.processing_time != null
+              ? { processing_time_seconds: job.result.stats.processing_time }
+              : undefined
+          );
+          track("Highlights Generated", {
+            highlights_found: job.result?.highlights_found ?? 0,
+          });
           setState((prev) => {
             return { ...prev, result: job.result ?? null, loading: false, progress: 100, progressStatus: "Completed", currentJobId: null, selectedFile: null, successMessage: "Highlights generated successfully!", fileInputKey: prev.fileInputKey + 1 };
           });
@@ -175,6 +184,7 @@ export function usePipeline() {
 
       try {
         track("upload_started");
+        track("Upload Started");
         const uploadResponse = await uploadVideo(file);
 
         if (!uploadResponse.location) {
@@ -182,6 +192,7 @@ export function usePipeline() {
         }
 
         track("upload_completed");
+        track("Upload Completed", { $set: { first_upload_completed: true } });
         setState((prev) => {
           return { ...prev, progressStatus: "Starting pipeline...", progress: 10 };
         });
@@ -193,6 +204,7 @@ export function usePipeline() {
         }
 
         track("pipeline_started");
+        track("Pipeline Started");
         const jobId = startResponse.job_id;
 
         setState((prev) => {

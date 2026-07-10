@@ -45,12 +45,14 @@ export default function RegisterPage() {
     }
 
     setSubmitting(true);
+    track("Signup Started");
     try {
       // AGC-070: registration no longer logs the user in — the account is
       // created unverified and a verification email is sent. Show a
       // "check your email" state instead of navigating to /dashboard.
       await register(name, email, password);
       track("User Registered");
+      track("Signup Completed");
       setRegistered(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");

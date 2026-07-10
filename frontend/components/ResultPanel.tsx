@@ -7,6 +7,7 @@ import {
   downloadThumbnail,
   downloadResultJson,
 } from "../services/api";
+import { track } from "../services/analytics";
 import { useAuthedMediaUrl } from "../hooks/useAuthedMediaUrl";
 import type { ExtendedPipelineResult, HighlightItem } from "../types/pipeline";
 
@@ -140,19 +141,28 @@ export function ResultPanel({ result }: ResultPanelProps) {
               {hasReel && (
                 <DownloadButton
                   label="Download Reel"
-                  onClick={() => downloadReel(result.final_reel)}
+                  onClick={() => {
+                    track("Download Reel");
+                    downloadReel(result.final_reel);
+                  }}
                 />
               )}
               {hasVertical && (
                 <DownloadButton
                   label="Download Vertical Reel"
-                  onClick={() => downloadVerticalReel(result.vertical_reel)}
+                  onClick={() => {
+                    track("Download Reel");
+                    downloadVerticalReel(result.vertical_reel);
+                  }}
                 />
               )}
               {hasThumbnail && (
                 <DownloadButton
                   label="Download Thumbnail"
-                  onClick={() => downloadThumbnail(result.thumbnail)}
+                  onClick={() => {
+                    track("Download Thumbnail");
+                    downloadThumbnail(result.thumbnail);
+                  }}
                 />
               )}
               {hasResultJson && (

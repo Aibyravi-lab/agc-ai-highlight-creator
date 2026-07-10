@@ -5,10 +5,15 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "../context/AuthContext";
 import { Footer } from "../components/Footer";
+import { track } from "../services/analytics";
 
 export default function LandingPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
+
+  useEffect(() => {
+    track("Landing Page Viewed");
+  }, []);
 
   useEffect(() => {
     if (!loading && user) {

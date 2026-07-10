@@ -111,11 +111,13 @@ function ProjectCard({ project, onDelete }: { project: ProjectItem; onDelete: ()
 
   const handleDownloadReel = () => {
     track("Project Downloaded");
+    track("Download Reel");
     downloadReel(project.horizontal_reel_path ?? undefined);
   };
 
   const handleDownloadThumbnail = () => {
     track("Project Downloaded");
+    track("Download Thumbnail");
     downloadThumbnail(project.thumbnail_path ?? undefined);
   };
 

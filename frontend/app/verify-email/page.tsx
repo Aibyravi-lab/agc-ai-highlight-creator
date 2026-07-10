@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { verifyEmail } from "../../services/auth";
+import { track } from "../../services/analytics";
 
 type VerifyState = "loading" | "success" | "error";
 
@@ -28,6 +29,7 @@ function VerifyEmailContent() {
         if (cancelled) return;
         setMessage(res.message);
         setState("success");
+        track("Email Verified");
       })
       .catch((err) => {
         if (cancelled) return;

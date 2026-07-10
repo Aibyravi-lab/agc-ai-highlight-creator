@@ -7,6 +7,7 @@ import { useSubscription } from "../../hooks/useSubscription";
 import { InfoPageShell } from "../../components/InfoPageShell";
 import { createPaymentOrder, verifyPayment } from "../../services/api";
 import { openRazorpayCheckout } from "../../services/razorpay";
+import { track } from "../../services/analytics";
 import type { RazorpayPaymentSuccess } from "../../types/payment";
 
 interface PlanCardProps {
@@ -158,6 +159,7 @@ export default function PricingPage() {
       await refresh();
       setPendingPayment(null);
       setCheckoutState("done");
+      track("Payment Success");
     } catch {
       // Could be a genuine bad signature or a transient network/server
       // error — either way the payment was captured by Razorpay, so we
@@ -175,6 +177,7 @@ export default function PricingPage() {
   const handleUpgrade = async () => {
     if (IN_FLIGHT_STATES.includes(checkoutState)) return;
 
+    track("Upgrade Button Clicked");
     setCheckoutError(null);
     setPendingPayment(null);
     setCheckoutState("creating_order");
@@ -183,6 +186,7 @@ export default function PricingPage() {
       const order = await createPaymentOrder("pro");
 
       setCheckoutState("opening_checkout");
+      track("Checkout Started");
       await openRazorpayCheckout(order, {
         onSuccess: (payment) => {
           runVerification(payment);
@@ -191,6 +195,7 @@ export default function PricingPage() {
         onFailure: (reason) => {
           setCheckoutError(reason);
           setCheckoutState("failed");
+          track("Payment Failed", { reason });
         },
       });
       // Modal is open and awaiting user action — but if the user already
@@ -198,8 +203,10 @@ export default function PricingPage() {
       // whatever state the callback above already moved us to.
       setCheckoutState((state) => (state === "opening_checkout" ? "awaiting_payment" : state));
     } catch (err) {
-      setCheckoutError(err instanceof Error ? err.message : "Unable to start checkout. Please try again.");
+      const message = err instanceof Error ? err.message : "Unable to start checkout. Please try again.";
+      setCheckoutError(message);
       setCheckoutState("failed");
+      track("Payment Failed", { reason: message });
     }
   };
 

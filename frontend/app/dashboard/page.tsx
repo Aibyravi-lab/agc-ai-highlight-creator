@@ -81,8 +81,13 @@ function DashboardContent({
   const { subscription, loading: subscriptionLoading } = useSubscription();
   const isPro = subscription?.plan === "PRO";
 
+  useEffect(() => {
+    track("Dashboard Viewed");
+  }, []);
+
   const handleLogout = () => {
     track("logout");
+    track("Logout");
     reset();
     logout();
     router.replace("/login");
@@ -96,10 +101,13 @@ function DashboardContent({
 
   const handleDownloadPrimary = () => {
     if (result?.final_reel) {
+      track("Download Reel");
       downloadReel(result.final_reel);
     } else if (result?.vertical_reel) {
+      track("Download Reel");
       downloadVerticalReel(result.vertical_reel);
     } else if (result?.thumbnail) {
+      track("Download Thumbnail");
       downloadThumbnail(result.thumbnail);
     }
   };
