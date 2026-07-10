@@ -40,9 +40,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = useCallback(
     async (name: string, email: string, password: string) => {
-      const { token, user } = await apiRegister(name, email, password);
-      localStorage.setItem("agc_token", token);
-      setUser(user);
+      // AGC-070: registration does not establish a session — the account
+      // is created unverified and must be verified before login. No token
+      // is stored and no user state is set here.
+      return apiRegister(name, email, password);
     },
     []
   );

@@ -17,6 +17,7 @@ export default function RegisterPage() {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [registered, setRegistered] = useState(false);
 
   useEffect(() => {
     if (!loading && user) {
@@ -45,9 +46,12 @@ export default function RegisterPage() {
 
     setSubmitting(true);
     try {
+      // AGC-070: registration no longer logs the user in — the account is
+      // created unverified and a verification email is sent. Show a
+      // "check your email" state instead of navigating to /dashboard.
       await register(name, email, password);
       track("User Registered");
-      router.replace("/dashboard");
+      setRegistered(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
     } finally {
@@ -75,117 +79,134 @@ export default function RegisterPage() {
 
         {/* Card */}
         <div className="bg-[#0d0e14] border border-[#1a1d2e] rounded-2xl p-8">
-          <h2 className="text-lg font-semibold text-white mb-1">Create account</h2>
-          <p className="text-gray-500 text-sm mb-6">
-            Start generating AI highlights from your videos.
-          </p>
-
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label className="block text-sm text-gray-400 mb-1.5" htmlFor="name">
-                Name
-              </label>
-              <input
-                id="name"
-                type="text"
-                autoComplete="name"
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090d] border border-[#1a1d2e] text-white text-sm placeholder-gray-600 focus:outline-none focus:border-green-500/60 transition-colors"
-                placeholder="Your name"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-400 mb-1.5" htmlFor="email">
-                Email
-              </label>
-              <input
-                id="email"
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090d] border border-[#1a1d2e] text-white text-sm placeholder-gray-600 focus:outline-none focus:border-green-500/60 transition-colors"
-                placeholder="you@example.com"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-400 mb-1.5" htmlFor="password">
-                Password
-              </label>
-              <input
-                id="password"
-                type="password"
-                autoComplete="new-password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090d] border border-[#1a1d2e] text-white text-sm placeholder-gray-600 focus:outline-none focus:border-green-500/60 transition-colors"
-                placeholder="Min. 8 characters"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-400 mb-1.5" htmlFor="confirm-password">
-                Confirm Password
-              </label>
-              <input
-                id="confirm-password"
-                type="password"
-                autoComplete="new-password"
-                required
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090d] border border-[#1a1d2e] text-white text-sm placeholder-gray-600 focus:outline-none focus:border-green-500/60 transition-colors"
-                placeholder="Re-enter your password"
-              />
-            </div>
-
-            <div className="flex items-start gap-2.5">
-              <input
-                id="agree-terms"
-                type="checkbox"
-                checked={agreedToTerms}
-                onChange={(e) => setAgreedToTerms(e.target.checked)}
-                className="mt-0.5 w-4 h-4 rounded border-[#1a1d2e] bg-[#08090d] accent-green-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-500"
-              />
-              <label htmlFor="agree-terms" className="text-sm text-gray-400 leading-snug">
-                I agree to the{" "}
-                <Link
-                  href="/privacy"
-                  className="text-green-400 hover:text-green-300 transition-colors"
-                >
-                  Privacy Policy
-                </Link>{" "}
-                and{" "}
-                <Link
-                  href="/terms"
-                  className="text-green-400 hover:text-green-300 transition-colors"
-                >
-                  Terms &amp; Conditions
-                </Link>
-                .
-              </label>
-            </div>
-
-            {error && (
-              <p className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg px-3.5 py-2.5">
-                {error}
+          {registered ? (
+            <>
+              <h2 className="text-lg font-semibold text-white mb-1">Registration successful</h2>
+              <p className="text-gray-500 text-sm mb-6">
+                Please verify your email. Check your inbox before signing in.
               </p>
-            )}
+              <Link
+                href="/login"
+                className="block w-full text-center bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 rounded-lg text-sm transition-colors"
+              >
+                Go to Sign In
+              </Link>
+            </>
+          ) : (
+            <>
+              <h2 className="text-lg font-semibold text-white mb-1">Create account</h2>
+              <p className="text-gray-500 text-sm mb-6">
+                Start generating AI highlights from your videos.
+              </p>
 
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg text-sm transition-colors"
-            >
-              {submitting ? "Creating account…" : "Create account"}
-            </button>
-          </form>
+              <form onSubmit={handleSubmit} className="space-y-5">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1.5" htmlFor="name">
+                    Name
+                  </label>
+                  <input
+                    id="name"
+                    type="text"
+                    autoComplete="name"
+                    required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090d] border border-[#1a1d2e] text-white text-sm placeholder-gray-600 focus:outline-none focus:border-green-500/60 transition-colors"
+                    placeholder="Your name"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1.5" htmlFor="email">
+                    Email
+                  </label>
+                  <input
+                    id="email"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090d] border border-[#1a1d2e] text-white text-sm placeholder-gray-600 focus:outline-none focus:border-green-500/60 transition-colors"
+                    placeholder="you@example.com"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1.5" htmlFor="password">
+                    Password
+                  </label>
+                  <input
+                    id="password"
+                    type="password"
+                    autoComplete="new-password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090d] border border-[#1a1d2e] text-white text-sm placeholder-gray-600 focus:outline-none focus:border-green-500/60 transition-colors"
+                    placeholder="Min. 8 characters"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1.5" htmlFor="confirm-password">
+                    Confirm Password
+                  </label>
+                  <input
+                    id="confirm-password"
+                    type="password"
+                    autoComplete="new-password"
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090d] border border-[#1a1d2e] text-white text-sm placeholder-gray-600 focus:outline-none focus:border-green-500/60 transition-colors"
+                    placeholder="Re-enter your password"
+                  />
+                </div>
+
+                <div className="flex items-start gap-2.5">
+                  <input
+                    id="agree-terms"
+                    type="checkbox"
+                    checked={agreedToTerms}
+                    onChange={(e) => setAgreedToTerms(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 rounded border-[#1a1d2e] bg-[#08090d] accent-green-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-500"
+                  />
+                  <label htmlFor="agree-terms" className="text-sm text-gray-400 leading-snug">
+                    I agree to the{" "}
+                    <Link
+                      href="/privacy"
+                      className="text-green-400 hover:text-green-300 transition-colors"
+                    >
+                      Privacy Policy
+                    </Link>{" "}
+                    and{" "}
+                    <Link
+                      href="/terms"
+                      className="text-green-400 hover:text-green-300 transition-colors"
+                    >
+                      Terms &amp; Conditions
+                    </Link>
+                    .
+                  </label>
+                </div>
+
+                {error && (
+                  <p className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg px-3.5 py-2.5">
+                    {error}
+                  </p>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg text-sm transition-colors"
+                >
+                  {submitting ? "Creating account…" : "Create account"}
+                </button>
+              </form>
+            </>
+          )}
         </div>
 
         {/* Footer link */}

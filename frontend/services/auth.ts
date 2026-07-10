@@ -1,4 +1,4 @@
-import type { AuthUser, AuthResult } from "../types/auth";
+import type { AuthUser, AuthResult, RegisterResult } from "../types/auth";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL?.trim() || "";
@@ -49,9 +49,12 @@ export async function register(
   name: string,
   email: string,
   password: string
-): Promise<AuthResult> {
+): Promise<RegisterResult> {
+  // AGC-070: registration no longer returns an access_token — the account
+  // is created unverified and a verification email is sent. No session is
+  // established here.
   const data = await authRequest<{
-    access_token: string;
+    message: string;
     user: AuthUser;
   }>("/auth/register", {
     method: "POST",
@@ -59,7 +62,7 @@ export async function register(
     body: JSON.stringify({ name, email, password }),
   });
 
-  return { token: data.access_token, user: data.user };
+  return { message: data.message, user: data.user };
 }
 
 export async function getCurrentUser(token: string): Promise<AuthUser> {
@@ -94,6 +97,16 @@ export async function resetPassword(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token, new_password: newPassword }),
+  });
+
+  return { message: data.message };
+}
+
+export async function verifyEmail(token: string): Promise<{ message: string }> {
+  const data = await authRequest<{ message: string }>("/auth/verify-email", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
   });
 
   return { message: data.message };
