@@ -2,6 +2,8 @@ import subprocess
 import json
 from pathlib import Path
 
+from app.config.config import settings
+
 
 def get_video_metadata(file_path: str):
     """
@@ -24,11 +26,20 @@ def get_video_metadata(file_path: str):
         str(file)
     ]
 
-    result = subprocess.run(
-        command,
-        capture_output=True,
-        text=True
-    )
+    try:
+
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=settings.FFMPEG_QUICK_TIMEOUT_SECONDS
+        )
+
+    except subprocess.TimeoutExpired:
+
+        raise Exception(
+            "Video metadata inspection timed out"
+        )
 
     data = json.loads(result.stdout)
 

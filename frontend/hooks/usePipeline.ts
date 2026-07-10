@@ -12,6 +12,7 @@ import {
 } from "../services/api";
 import { track } from "../services/analytics";
 import { useAuth } from "../context/AuthContext";
+import { isFileTooLarge, getFileTooLargeMessage } from "../utils/uploadLimits";
 import type {
   PipelineJob,
   JobStats,
@@ -154,6 +155,14 @@ export function usePipeline() {
         setState((prev) => ({
           ...prev,
           error: `Unsupported file type${ext ? ` "${ext}"` : ""}. Please upload a video file (MP4, MOV, AVI, MKV, WebM).`,
+        }));
+        return;
+      }
+
+      if (isFileTooLarge(file.size)) {
+        setState((prev) => ({
+          ...prev,
+          error: getFileTooLargeMessage(),
         }));
         return;
       }

@@ -15,9 +15,11 @@ from fastapi import (
 
 from app.config.config import settings
 from app.dependencies import get_current_user
+from app.services.file_safety_service import FileSafetyService
 from app.services.logger_service import LoggerService
 from app.services.mime_validation_service import MimeValidationService
 from app.services.upload_cache_service import UploadCacheService
+from app.services.video_service import get_video_metadata
 
 
 router = APIRouter(
@@ -58,6 +60,8 @@ class UploadError:
     INVALID_MIME_TYPE = "INVALID_MIME_TYPE"
     UPLOAD_TOO_LARGE = "UPLOAD_TOO_LARGE"
     DUPLICATE_UPLOAD = "DUPLICATE_UPLOAD"
+    VIDEO_TOO_LONG = "VIDEO_TOO_LONG"
+    INVALID_VIDEO_METADATA = "INVALID_VIDEO_METADATA"
 
 
 def _sanitize_stem(raw_stem: str) -> str:
@@ -208,7 +212,50 @@ async def upload_video(
             }
         )
 
-    # ── 8. Cache and return ───────────────────────────────────
+    # ── 8. Video duration validation ──────────────────────────
+    # Reuses the ffprobe path already hardened by AGC-067
+    # (FFMPEG_QUICK_TIMEOUT_SECONDS) — no direct FFmpeg call here.
+    try:
+
+        metadata = get_video_metadata(file_path)
+
+    except Exception as error:
+
+        FileSafetyService.safe_delete_file(file_path)
+
+        LoggerService.error(
+            f"Video metadata inspection failed for user "
+            f"{user_id}: {error}"
+        )
+
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": UploadError.INVALID_VIDEO_METADATA,
+                "message": "Unable to process the uploaded video file."
+            }
+        )
+
+    max_duration_seconds = (
+        settings.MAX_VIDEO_DURATION_MINUTES
+        * 60
+    )
+
+    if metadata["duration_seconds"] > max_duration_seconds:
+
+        FileSafetyService.safe_delete_file(file_path)
+
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": UploadError.VIDEO_TOO_LONG,
+                "message": (
+                    "Video exceeds the maximum allowed duration."
+                )
+            }
+        )
+
+    # ── 9. Cache and return ───────────────────────────────────
     upload_info = {
 
         "success": True,

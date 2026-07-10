@@ -1,6 +1,8 @@
 import subprocess
 import time
 
+from app.config.config import settings
+from app.services.cleanup_service import CleanupService
 from app.services.profiler_service import PipelineProfiler
 from app.services.job_storage_service import JobStorageService
 
@@ -65,11 +67,24 @@ class CaptionService:
 
         burn_in_start = time.perf_counter()
 
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True
-        )
+        try:
+
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=settings.FFMPEG_SHORT_TIMEOUT_SECONDS
+            )
+
+        except subprocess.TimeoutExpired:
+
+            CleanupService.cleanup_temp_file(
+                str(output_video)
+            )
+
+            raise Exception(
+                "Caption burn-in timed out"
+            )
 
         if profiler is not None:
             profiler.add(

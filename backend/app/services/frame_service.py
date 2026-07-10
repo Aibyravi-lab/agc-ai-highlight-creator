@@ -1,4 +1,6 @@
 import subprocess
+from app.config.config import settings
+from app.services.cleanup_service import CleanupService
 from app.services.job_storage_service import JobStorageService
 
 
@@ -34,11 +36,24 @@ class FrameService:
             output_pattern
         ]
 
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True
-        )
+        try:
+
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=settings.FFMPEG_LONG_TIMEOUT_SECONDS
+            )
+
+        except subprocess.TimeoutExpired:
+
+            CleanupService.cleanup_temp_folder(
+                str(output_folder)
+            )
+
+            raise Exception(
+                "Frame extraction timed out"
+            )
 
         if result.returncode != 0:
             raise Exception(

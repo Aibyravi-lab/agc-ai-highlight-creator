@@ -1,6 +1,8 @@
 import subprocess
 import wave
 import numpy as np
+from app.config.config import settings
+from app.services.cleanup_service import CleanupService
 from app.services.job_storage_service import JobStorageService
 
 
@@ -24,11 +26,24 @@ class AudioService:
             output_wav
         ]
 
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True
-        )
+        try:
+
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=settings.FFMPEG_LONG_TIMEOUT_SECONDS
+            )
+
+        except subprocess.TimeoutExpired:
+
+            CleanupService.cleanup_temp_file(
+                output_wav
+            )
+
+            raise Exception(
+                "Audio extraction timed out"
+            )
 
         if result.returncode != 0:
             raise Exception(

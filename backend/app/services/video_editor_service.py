@@ -1,5 +1,7 @@
 import subprocess
 
+from app.config.config import settings
+from app.services.cleanup_service import CleanupService
 from app.services.job_storage_service import JobStorageService
 class VideoEditorService:
 
@@ -48,11 +50,24 @@ class VideoEditorService:
         ]
 
 
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True
-        )
+        try:
+
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=settings.FFMPEG_SHORT_TIMEOUT_SECONDS
+            )
+
+        except subprocess.TimeoutExpired:
+
+            CleanupService.cleanup_temp_file(
+                str(output_file)
+            )
+
+            raise Exception(
+                f"Clip creation timed out at timestamp {timestamp}"
+            )
 
 
         if result.returncode != 0:

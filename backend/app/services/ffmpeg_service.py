@@ -1,6 +1,8 @@
 import shutil
 import subprocess
 
+from app.config.config import settings
+
 
 class FFmpegService:
 
@@ -36,7 +38,8 @@ class FFmpegService:
                 ],
                 capture_output=True,
                 text=True,
-                check=True
+                check=True,
+                timeout=settings.FFMPEG_QUICK_TIMEOUT_SECONDS
             )
 
             subprocess.run(
@@ -46,7 +49,8 @@ class FFmpegService:
                 ],
                 capture_output=True,
                 text=True,
-                check=True
+                check=True,
+                timeout=settings.FFMPEG_QUICK_TIMEOUT_SECONDS
             )
 
         except Exception as error:

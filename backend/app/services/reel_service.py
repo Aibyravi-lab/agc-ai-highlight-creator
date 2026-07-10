@@ -2,6 +2,8 @@ import subprocess
 import time
 from pathlib import Path
 
+from app.config.config import settings
+from app.services.cleanup_service import CleanupService
 from app.services.job_storage_service import JobStorageService
 class ReelService:
 
@@ -46,11 +48,24 @@ class ReelService:
             str(vertical_video)
         ]
 
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True
-        )
+        try:
+
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=settings.FFMPEG_SHORT_TIMEOUT_SECONDS
+            )
+
+        except subprocess.TimeoutExpired:
+
+            CleanupService.cleanup_temp_file(
+                str(vertical_video)
+            )
+
+            raise Exception(
+                "Vertical reel generation timed out"
+            )
 
         if result.returncode != 0:
 
@@ -132,11 +147,24 @@ class ReelService:
 
         merge_start = time.perf_counter()
 
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True
-        )
+        try:
+
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=settings.FFMPEG_SHORT_TIMEOUT_SECONDS
+            )
+
+        except subprocess.TimeoutExpired:
+
+            CleanupService.cleanup_temp_file(
+                str(final_video)
+            )
+
+            raise Exception(
+                "Clip merge timed out"
+            )
 
         if result.returncode != 0:
 

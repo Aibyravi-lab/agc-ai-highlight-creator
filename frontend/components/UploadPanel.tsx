@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
+import { MAX_UPLOAD_SIZE_MB, MAX_VIDEO_DURATION_MINUTES } from "../utils/uploadLimits";
 
 interface UploadPanelProps {
   selectedFile: File | null;
@@ -127,12 +128,11 @@ export function UploadPanel({
         <span>
           Supported formats: <span className="text-gray-400">{SUPPORTED_FORMATS_LABEL}</span>
         </span>
-        <span>Maximum upload size: no hard limit during public beta</span>
+        <span>Maximum upload size: {MAX_UPLOAD_SIZE_MB} MB</span>
       </div>
 
-      <p className="mt-2 text-xs text-gray-600">
-        <span className="text-gray-500 font-medium">Recommended:</span> Videos under 3 hours
-        provide the best experience during Public Beta.
+      <p className="mt-1.5 text-xs text-gray-500">
+        Maximum video duration: {MAX_VIDEO_DURATION_MINUTES} minutes
       </p>
 
       {/* Selected file summary */}

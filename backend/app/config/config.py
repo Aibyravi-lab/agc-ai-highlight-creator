@@ -129,6 +129,17 @@ class Settings(BaseSettings):
         )
     )
 
+    # AGC-067.1: caps source video length at upload time so a legitimate
+    # low-bitrate, long-duration upload cannot run past the AGC-067
+    # FFMPEG_LONG_TIMEOUT_SECONDS during frame/audio extraction — file
+    # size alone does not bound duration.
+    MAX_VIDEO_DURATION_MINUTES: int = int(
+        os.getenv(
+            "MAX_VIDEO_DURATION_MINUTES",
+            "30"
+        )
+    )
+
     MAX_CONCURRENT_JOBS_PER_USER: int = int(
         os.getenv(
             "MAX_CONCURRENT_JOBS_PER_USER",
@@ -147,6 +158,30 @@ class Settings(BaseSettings):
         os.getenv(
             "TEMP_CLEANUP_HOURS",
             "24"
+        )
+    )
+
+    # AGC-067: every ffmpeg/ffprobe subprocess call must bound its
+    # runtime so a hung/malformed-input process cannot block a worker
+    # indefinitely. Three tiers based on expected workload size.
+    FFMPEG_QUICK_TIMEOUT_SECONDS: int = int(
+        os.getenv(
+            "FFMPEG_QUICK_TIMEOUT_SECONDS",
+            "15"
+        )
+    )
+
+    FFMPEG_SHORT_TIMEOUT_SECONDS: int = int(
+        os.getenv(
+            "FFMPEG_SHORT_TIMEOUT_SECONDS",
+            "120"
+        )
+    )
+
+    FFMPEG_LONG_TIMEOUT_SECONDS: int = int(
+        os.getenv(
+            "FFMPEG_LONG_TIMEOUT_SECONDS",
+            "600"
         )
     )
 
