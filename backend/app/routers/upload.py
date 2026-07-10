@@ -15,6 +15,7 @@ from fastapi import (
 
 from app.config.config import settings
 from app.dependencies import get_current_user
+from app.services.disk_space_service import DiskSpaceService
 from app.services.file_safety_service import FileSafetyService
 from app.services.logger_service import LoggerService
 from app.services.mime_validation_service import MimeValidationService
@@ -64,6 +65,7 @@ class UploadError:
     VIDEO_TOO_LONG = "VIDEO_TOO_LONG"
     INVALID_VIDEO_METADATA = "INVALID_VIDEO_METADATA"
     RATE_LIMITED = "RATE_LIMITED"
+    INSUFFICIENT_DISK_SPACE = "INSUFFICIENT_DISK_SPACE"
 
 
 def _sanitize_stem(raw_stem: str) -> str:
@@ -91,6 +93,20 @@ async def upload_video(
     file: UploadFile = File(...),
     current_user: dict = Depends(get_current_user)
 ):
+
+    # ── 0. Disk space check ───────────────────────────────────
+    if not DiskSpaceService.has_sufficient_space():
+
+        raise HTTPException(
+            status_code=507,
+            detail={
+                "code": UploadError.INSUFFICIENT_DISK_SPACE,
+                "message": (
+                    "Server storage is nearly full. "
+                    "Please try again later."
+                )
+            }
+        )
 
     # ── 1. Filename presence ──────────────────────────────────
     if not file.filename:

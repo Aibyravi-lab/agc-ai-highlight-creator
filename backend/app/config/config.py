@@ -377,6 +377,23 @@ class Settings(BaseSettings):
         )
     )
 
+    # AGC-071: rate limits for the two remaining unprotected public
+    # endpoints, using the same generic RateLimitService as every other
+    # limit above.
+    PAYMENT_CREATE_ORDER_RATE_LIMIT_MAX_PER_MINUTE: int = int(
+        os.getenv(
+            "PAYMENT_CREATE_ORDER_RATE_LIMIT_MAX_PER_MINUTE",
+            "10"
+        )
+    )
+
+    VERIFY_EMAIL_RATE_LIMIT_MAX_PER_MINUTE: int = int(
+        os.getenv(
+            "VERIFY_EMAIL_RATE_LIMIT_MAX_PER_MINUTE",
+            "10"
+        )
+    )
+
     EMAIL_FROM_ADDRESS: str = os.getenv(
         "EMAIL_FROM_ADDRESS",
         "noreply@vedzovi.com"

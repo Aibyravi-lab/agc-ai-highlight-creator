@@ -12,6 +12,13 @@ from app.services.subscription_service import SubscriptionService
 class AuthService:
 
     @staticmethod
+    def normalize_email(
+        email: str
+    ) -> str:
+
+        return email.strip().lower()
+
+    @staticmethod
     def validate_password_strength(
         password: str
     ) -> Optional[str]:
@@ -96,6 +103,8 @@ class AuthService:
         password: str
     ) -> dict:
 
+        email = cls.normalize_email(email)
+
         password_hash = cls.hash_password(password)
 
         created_at = datetime.utcnow().isoformat()
@@ -141,6 +150,8 @@ class AuthService:
         email: str
     ) -> Optional[dict]:
 
+        email = cls.normalize_email(email)
+
         connection = DatabaseService.get_connection()
 
         connection.row_factory = (
@@ -154,6 +165,9 @@ class AuthService:
 
         cursor = connection.cursor()
 
+        # Compares case-insensitively so pre-existing rows stored with
+        # mixed-case emails (before this normalization was added) keep
+        # matching a lowercased lookup.
         cursor.execute(
             """
             SELECT
@@ -166,7 +180,7 @@ class AuthService:
                 credits_remaining,
                 email_verified
             FROM users
-            WHERE email = ?
+            WHERE LOWER(email) = ?
             """,
             (email,)
         )

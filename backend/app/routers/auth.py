@@ -305,8 +305,21 @@ def reset_password(
 
 @router.post("/verify-email")
 def verify_email(
-    body: VerifyEmailRequest
+    body: VerifyEmailRequest,
+    request: Request
 ):
+
+    if RateLimitService.is_rate_limited(
+        key=request.client.host,
+        endpoint="verify-email",
+        max_attempts=settings.VERIFY_EMAIL_RATE_LIMIT_MAX_PER_MINUTE,
+        window_seconds=60
+    ):
+
+        raise HTTPException(
+            status_code=429,
+            detail=RATE_LIMIT_MESSAGE
+        )
 
     verified = EmailVerificationService.verify(
         body.token

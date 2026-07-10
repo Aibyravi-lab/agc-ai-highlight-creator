@@ -1,13 +1,13 @@
 # AGC backend — systemd unit
 # This mirrors the unit ACTUALLY RUNNING in production as of AGC-045.2
-# (confirmed 2026-07-03: venv at repo root, not backend/venv; Restart=always;
-# host 0.0.0.0). It exists here as a versioned reference/backup only —
-# do not install this over the live unit without an explicit decision to do so.
+# (confirmed 2026-07-03: venv at repo root, not backend/venv; Restart=always).
+# It exists here as a versioned reference/backup only — do not install this
+# over the live unit without an explicit decision to do so.
 #
-# Known deviation from docs/deploy.md: that guide documents `backend/venv`
-# and `--host 127.0.0.1`. Production instead uses a repo-root venv and binds
-# 0.0.0.0. The 0.0.0.0 bind is only safe if ufw is actively blocking external
-# access to 8000 (docs/deploy.md section 2) — validate_agc045_2.sh checks this.
+# AGC-071: binds 127.0.0.1, matching docs/deploy.md and nginx/agc.conf
+# (which already proxy_pass to 127.0.0.1:8000). The previous 0.0.0.0 bind
+# relied entirely on ufw denying external access to 8000 as its only
+# defense — binding loopback-only removes that single point of failure.
 
 [Unit]
 Description=AGC AI Highlight Creator - FastAPI backend
@@ -18,7 +18,7 @@ Type=simple
 User=agc
 WorkingDirectory=/home/agc/agc-ai-highlight-creator/backend
 Environment=PATH=/home/agc/agc-ai-highlight-creator/venv/bin
-ExecStart=/home/agc/agc-ai-highlight-creator/venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+ExecStart=/home/agc/agc-ai-highlight-creator/venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=5
 KillSignal=SIGTERM

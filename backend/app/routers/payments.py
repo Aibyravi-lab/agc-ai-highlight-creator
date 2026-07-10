@@ -45,8 +45,22 @@ def create_order(
     current_user: dict = Depends(get_current_user)
 ):
 
+    user_id = current_user["id"]
+
+    if RateLimitService.is_rate_limited(
+        key=f"user:{user_id}",
+        endpoint="payment_create_order",
+        max_attempts=settings.PAYMENT_CREATE_ORDER_RATE_LIMIT_MAX_PER_MINUTE,
+        window_seconds=60
+    ):
+
+        raise HTTPException(
+            status_code=429,
+            detail="Too many requests. Please try again later."
+        )
+
     try:
-        return PaymentService.create_order(current_user["id"], body.plan)
+        return PaymentService.create_order(user_id, body.plan)
 
     except PaymentNotConfiguredError as exc:
         raise HTTPException(
