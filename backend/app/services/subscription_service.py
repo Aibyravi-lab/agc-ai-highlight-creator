@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from app.services.database_service import DatabaseService
@@ -16,6 +16,10 @@ class SubscriptionStatus:
 
 
 class SubscriptionService:
+
+    # Razorpay's PRO plan (PaymentService.PLAN_PRICING) bills monthly, so a
+    # successful upgrade grants 30 days of PRO access before it lapses.
+    PRO_SUBSCRIPTION_DURATION_DAYS = 30
 
     @staticmethod
     def _row_factory(cursor, row):
@@ -65,12 +69,42 @@ class SubscriptionService:
         cls,
         user_id: int
     ) -> Optional[dict]:
+        # Single read path for subscription state (used by is_pro_active and
+        # GET /subscription/me), so expiry enforcement lives here: a PRO row
+        # whose expires_at has passed is downgraded to FREE/EXPIRED before
+        # being returned. The UPDATE's WHERE clause (plan = PRO AND
+        # expires_at <= now) makes the downgrade idempotent and safe under
+        # concurrent requests — once one request flips the row to FREE, the
+        # same UPDATE is a no-op for every other in-flight request.
+
+        now = datetime.utcnow().isoformat()
 
         connection = DatabaseService.get_connection()
 
         connection.row_factory = cls._row_factory
 
         cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            UPDATE subscriptions
+            SET plan = ?,
+                status = ?,
+                updated_at = ?
+            WHERE user_id = ?
+              AND plan = ?
+              AND expires_at IS NOT NULL
+              AND expires_at <= ?
+            """,
+            (
+                SubscriptionPlan.FREE,
+                SubscriptionStatus.EXPIRED,
+                now,
+                user_id,
+                SubscriptionPlan.PRO,
+                now,
+            )
+        )
 
         cursor.execute(
             """
@@ -91,9 +125,18 @@ class SubscriptionService:
 
         subscription = cursor.fetchone()
 
+        connection.commit()
+
         connection.close()
 
         return subscription
+
+    @classmethod
+    def _compute_pro_expiry(cls, now: datetime) -> str:
+
+        return (
+            now + timedelta(days=cls.PRO_SUBSCRIPTION_DURATION_DAYS)
+        ).isoformat()
 
     @classmethod
     def upgrade_to_pro(
@@ -101,7 +144,9 @@ class SubscriptionService:
         user_id: int
     ) -> dict:
 
-        now = datetime.utcnow().isoformat()
+        now = datetime.utcnow()
+        now_iso = now.isoformat()
+        expires_at = cls._compute_pro_expiry(now)
 
         connection = DatabaseService.get_connection()
 
@@ -113,15 +158,16 @@ class SubscriptionService:
             SET plan = ?,
                 status = ?,
                 started_at = ?,
-                expires_at = NULL,
+                expires_at = ?,
                 updated_at = ?
             WHERE user_id = ?
             """,
             (
                 SubscriptionPlan.PRO,
                 SubscriptionStatus.ACTIVE,
-                now,
-                now,
+                now_iso,
+                expires_at,
+                now_iso,
                 user_id,
             )
         )
@@ -150,10 +196,10 @@ class SubscriptionService:
                     user_id,
                     SubscriptionPlan.PRO,
                     SubscriptionStatus.ACTIVE,
-                    now,
-                    None,
-                    now,
-                    now,
+                    now_iso,
+                    expires_at,
+                    now_iso,
+                    now_iso,
                 )
             )
 
@@ -172,7 +218,9 @@ class SubscriptionService:
         # Same as upgrade_to_pro, but runs on a caller-owned connection so
         # it commits atomically with the caller's other writes.
 
-        now = datetime.utcnow().isoformat()
+        now = datetime.utcnow()
+        now_iso = now.isoformat()
+        expires_at = cls._compute_pro_expiry(now)
 
         cursor = connection.cursor()
 
@@ -182,15 +230,16 @@ class SubscriptionService:
             SET plan = ?,
                 status = ?,
                 started_at = ?,
-                expires_at = NULL,
+                expires_at = ?,
                 updated_at = ?
             WHERE user_id = ?
             """,
             (
                 SubscriptionPlan.PRO,
                 SubscriptionStatus.ACTIVE,
-                now,
-                now,
+                now_iso,
+                expires_at,
+                now_iso,
                 user_id,
             )
         )
@@ -209,10 +258,10 @@ class SubscriptionService:
                     user_id,
                     SubscriptionPlan.PRO,
                     SubscriptionStatus.ACTIVE,
-                    now,
-                    None,
-                    now,
-                    now,
+                    now_iso,
+                    expires_at,
+                    now_iso,
+                    now_iso,
                 )
             )
 
