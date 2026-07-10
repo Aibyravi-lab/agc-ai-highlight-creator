@@ -6,6 +6,7 @@ from typing import Optional
 
 from app.config.config import settings
 from app.services.database_service import DatabaseService
+from app.services.health_service import HealthService
 
 _start_time = time.time()
 
@@ -20,6 +21,12 @@ class ObservabilityService:
         uptime_seconds = int(time.time() - _start_time)
         overall = "ok" if (db_ok and ffmpeg_ok) else "degraded"
 
+        # AGC-073: additive diagnostics merged into the existing
+        # contract. Never overrides the fields above, so existing
+        # consumers (deploy validation scripts, docs) keep working.
+        extended = cls._get_extended_report_safe()
+        extended["checks"]["database"] = "healthy" if db_ok else "unhealthy"
+
         return {
             "status": overall,
             "version": settings.APP_VERSION,
@@ -27,7 +34,33 @@ class ObservabilityService:
             "database": "ok" if db_ok else "error",
             "ffmpeg": "ok" if ffmpeg_ok else "error",
             "uptime_seconds": uptime_seconds,
+            **extended,
         }
+
+    @classmethod
+    def _get_extended_report_safe(cls) -> dict:
+
+        try:
+            return HealthService.get_extended_report()
+        except Exception:
+            return {
+                "build": {"git_commit": "unknown", "git_tag": "unknown"},
+                "python_version": "unknown",
+                "ffmpeg_version": "unknown",
+                "disk": {
+                    "total_gb": None,
+                    "used_gb": None,
+                    "free_gb": None,
+                    "percent_free": None,
+                    "status": "unhealthy",
+                },
+                "checks": {
+                    "uploads": "unhealthy",
+                    "highlights": "unhealthy",
+                    "ffmpeg": "unhealthy",
+                    "disk": "unhealthy",
+                },
+            }
 
     @classmethod
     def check_ready(cls) -> dict:
