@@ -1,7 +1,7 @@
 from datetime import datetime
-from pathlib import Path
 
 from app.services.database_service import DatabaseService
+from app.services.file_safety_service import FileSafetyService
 
 
 class ProjectService:
@@ -169,10 +169,7 @@ class ProjectService:
         for key in asset_keys:
             asset_path = project.get(key)
             if asset_path:
-                try:
-                    Path(asset_path).unlink(missing_ok=True)
-                except Exception:
-                    pass
+                FileSafetyService.safe_delete_file(asset_path)
 
         connection = DatabaseService.get_connection()
 

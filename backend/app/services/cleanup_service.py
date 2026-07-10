@@ -1,10 +1,7 @@
 from pathlib import Path
 from datetime import datetime, timedelta
-import shutil
 from app.config.config import settings
-from app.services.logger_service import (
-    LoggerService
-)
+from app.services.file_safety_service import FileSafetyService
 
 
 class CleanupService:
@@ -46,19 +43,7 @@ class CleanupService:
 
             if modified < cutoff:
 
-                try:
-
-                    file.unlink()
-
-                    LoggerService.info(
-                        f"Deleted upload: {file}"
-                    )
-
-                except Exception as error:
-
-                    LoggerService.error(
-                        f"Upload cleanup failed: {error}"
-                    )
+                FileSafetyService.safe_delete_file(file)
 
     @staticmethod
     def cleanup_frames():
@@ -86,19 +71,7 @@ class CleanupService:
 
             if modified < cutoff:
 
-                try:
-
-                    shutil.rmtree(folder)
-
-                    LoggerService.info(
-                        f"Deleted frame folder: {folder}"
-                    )
-
-                except Exception as error:
-
-                    LoggerService.error(
-                        f"Frame cleanup failed: {error}"
-                    )
+                FileSafetyService.safe_delete_file(folder)
 
     @staticmethod
     def cleanup_temp_file(
@@ -106,50 +79,17 @@ class CleanupService:
         job_id: str | None = None
     ):
 
-        path = Path(file_path)
-
-        exists_before_delete = path.exists()
-
-        if not exists_before_delete or not path.is_file():
-            return
-
-        try:
-
-            path.unlink()
-
-            LoggerService.info(
-                f"Cleaned up temp file: {path}"
-            )
-
-        except Exception as error:
-
-            LoggerService.error(
-                f"Temp file cleanup failed: {error}"
-            )
+        FileSafetyService.safe_delete_file(
+            file_path,
+            job_id=job_id
+        )
 
     @staticmethod
     def cleanup_temp_folder(
         folder_path: str
     ):
 
-        path = Path(folder_path)
-
-        if not path.exists() or not path.is_dir():
-            return
-
-        try:
-
-            shutil.rmtree(path)
-
-            LoggerService.info(
-                f"Cleaned up temp folder: {path}"
-            )
-
-        except Exception as error:
-
-            LoggerService.error(
-                f"Temp folder cleanup failed: {error}"
-            )
+        FileSafetyService.safe_delete_file(folder_path)
 
     @staticmethod
     def cleanup_old_jobs():
@@ -179,19 +119,7 @@ class CleanupService:
 
             if modified < cutoff:
 
-                try:
-
-                    shutil.rmtree(job_folder)
-
-                    LoggerService.info(
-                        f"Deleted old job folder: {job_folder}"
-                    )
-
-                except Exception as error:
-
-                    LoggerService.error(
-                        f"Job folder cleanup failed: {error}"
-                    )
+                FileSafetyService.safe_delete_file(job_folder)
 
     @staticmethod
     def cleanup_old_temp_folders():
@@ -223,25 +151,7 @@ class CleanupService:
                 if modified >= cutoff:
                     continue
 
-                try:
-
-                    if item.is_dir():
-
-                        shutil.rmtree(item)
-
-                    else:
-
-                        item.unlink()
-
-                    LoggerService.info(
-                        f"Deleted old temp item: {item}"
-                    )
-
-                except Exception as error:
-
-                    LoggerService.error(
-                        f"Old temp cleanup failed: {error}"
-                    )
+                FileSafetyService.safe_delete_file(item)
 
     @staticmethod
     def cleanup_thumbnails():
@@ -269,16 +179,4 @@ class CleanupService:
 
             if modified < cutoff:
 
-                try:
-
-                    file.unlink()
-
-                    LoggerService.info(
-                        f"Deleted thumbnail: {file}"
-                    )
-
-                except Exception as error:
-
-                    LoggerService.error(
-                        f"Thumbnail cleanup failed: {error}"
-                    )
+                FileSafetyService.safe_delete_file(file)
