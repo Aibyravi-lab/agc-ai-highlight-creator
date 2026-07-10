@@ -8,6 +8,10 @@ from app.services.background_job_service import (
 )
 from app.config.config import settings
 from app.services.logger_service import LoggerService
+from app.services.video_path_service import (
+    VideoPathService,
+    VideoPathError
+)
 from app.dependencies import get_current_user
 
 
@@ -22,6 +26,7 @@ class PipelineError:
     SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE"
     INSUFFICIENT_CREDITS = "INSUFFICIENT_CREDITS"
     ENDPOINT_REMOVED = "ENDPOINT_REMOVED"
+    INVALID_VIDEO_PATH = "INVALID_VIDEO_PATH"
 
 
 def _sanitize_job(job: dict) -> dict:
@@ -82,6 +87,18 @@ def start_video_processing(
 ):
 
     user_id = current_user["id"]
+
+    try:
+        video_path = VideoPathService.validate_upload_path(video_path)
+    except VideoPathError as error:
+
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": PipelineError.INVALID_VIDEO_PATH,
+                "message": str(error)
+            }
+        )
 
     if not BackgroundJobService.is_accepting_jobs():
 
