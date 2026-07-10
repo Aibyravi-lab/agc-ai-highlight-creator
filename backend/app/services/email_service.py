@@ -77,3 +77,21 @@ class EmailService:
                 "this, you can safely ignore this email."
             )
         )
+
+    @classmethod
+    def send_verification_email(
+        cls,
+        to: str,
+        verify_url: str
+    ) -> None:
+
+        cls.send(
+            to=to,
+            subject="Verify your Vedzovi email address",
+            body=(
+                "Thanks for signing up for Vedzovi!\n\n"
+                f"Verify your email address: {verify_url}\n\n"
+                "This link expires in 24 hours. If you didn't create this "
+                "account, you can safely ignore this email."
+            )
+        )

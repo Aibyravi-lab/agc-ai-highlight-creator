@@ -110,9 +110,10 @@ class AuthService:
                 name,
                 email,
                 password_hash,
-                created_at
+                created_at,
+                email_verified
             )
-            VALUES (?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, 0)
             """,
             (name, email, password_hash, created_at)
         )
@@ -131,6 +132,7 @@ class AuthService:
             "email": email,
             "created_at": created_at,
             "credits_remaining": settings.FREE_CREDITS,
+            "email_verified": False,
         }
 
     @classmethod
@@ -161,7 +163,8 @@ class AuthService:
                 password_hash,
                 created_at,
                 last_login,
-                credits_remaining
+                credits_remaining,
+                email_verified
             FROM users
             WHERE email = ?
             """,
@@ -201,7 +204,8 @@ class AuthService:
                 email,
                 created_at,
                 last_login,
-                credits_remaining
+                credits_remaining,
+                email_verified
             FROM users
             WHERE id = ?
             """,
