@@ -1,10 +1,14 @@
+import sqlite3
 import time
+from datetime import datetime
 
 import razorpay
 from razorpay.errors import SignatureVerificationError
 
 from app.config.config import settings
+from app.services.database_service import DatabaseService
 from app.services.logger_service import LoggerService
+from app.services.subscription_service import SubscriptionService
 
 
 class PaymentNotConfiguredError(Exception):
@@ -20,6 +24,14 @@ class PaymentGatewayError(Exception):
 
 
 class InvalidPaymentSignatureError(Exception):
+    pass
+
+
+class DuplicatePaymentError(Exception):
+    pass
+
+
+class PaymentProcessingError(Exception):
     pass
 
 
@@ -152,3 +164,99 @@ class PaymentService:
             "Payment verification succeeded",
             user_id=user_id
         )
+
+    @classmethod
+    def process_verified_payment(
+        cls,
+        user_id: int,
+        razorpay_order_id: str,
+        razorpay_payment_id: str,
+        plan: str,
+    ) -> dict:
+        # The razorpay_payment_id UNIQUE constraint is the actual replay
+        # guard: it makes the INSERT below the single point where a
+        # concurrent duplicate is guaranteed to lose.
+
+        now = datetime.utcnow().isoformat()
+
+        connection = DatabaseService.get_connection()
+
+        cursor = connection.cursor()
+
+        cursor.execute(
+            "SELECT id FROM payments WHERE razorpay_payment_id = ?",
+            (razorpay_payment_id,)
+        )
+
+        already_processed = cursor.fetchone() is not None
+
+        if already_processed:
+            connection.close()
+
+            LoggerService.info(
+                f"Duplicate payment verification rejected: "
+                f"payment_id={razorpay_payment_id}",
+                user_id=user_id
+            )
+
+            raise DuplicatePaymentError(
+                "Payment has already been processed."
+            )
+
+        try:
+            cursor.execute(
+                """
+                INSERT INTO payments (
+                    user_id, razorpay_order_id, razorpay_payment_id,
+                    plan, status, created_at, processed_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    user_id,
+                    razorpay_order_id,
+                    razorpay_payment_id,
+                    plan,
+                    "PROCESSED",
+                    now,
+                    now,
+                )
+            )
+
+            SubscriptionService.upgrade_to_pro_in_transaction(
+                connection,
+                user_id
+            )
+
+            connection.commit()
+
+        except sqlite3.IntegrityError:
+            connection.rollback()
+
+            LoggerService.info(
+                f"Duplicate payment verification rejected: "
+                f"payment_id={razorpay_payment_id}",
+                user_id=user_id
+            )
+
+            raise DuplicatePaymentError(
+                "Payment has already been processed."
+            ) from None
+
+        except Exception as exc:
+            connection.rollback()
+
+            LoggerService.error(
+                f"Payment processing failed after verification: "
+                f"payment_id={razorpay_payment_id}",
+                user_id=user_id
+            )
+
+            raise PaymentProcessingError(
+                "Failed to process payment"
+            ) from exc
+
+        finally:
+            connection.close()
+
+        return SubscriptionService.get_by_user_id(user_id)

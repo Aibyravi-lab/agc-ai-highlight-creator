@@ -3,13 +3,14 @@ from pydantic import BaseModel
 
 from app.dependencies import get_current_user
 from app.services.payment_service import (
+    DuplicatePaymentError,
     InvalidPaymentSignatureError,
     PaymentGatewayError,
     PaymentNotConfiguredError,
+    PaymentProcessingError,
     PaymentService,
     UnsupportedPlanError,
 )
-from app.services.subscription_service import SubscriptionService
 
 router = APIRouter(
     prefix="/payments",
@@ -72,14 +73,6 @@ def verify_payment(
 
     user_id = current_user["id"]
 
-    if SubscriptionService.is_pro_active(user_id):
-        subscription = SubscriptionService.get_by_user_id(user_id)
-        return {
-            "success": True,
-            "plan": subscription["plan"],
-            "status": subscription["status"],
-        }
-
     try:
         PaymentService.verify_payment(
             user_id,
@@ -106,7 +99,25 @@ def verify_payment(
             detail=str(exc)
         ) from exc
 
-    subscription = SubscriptionService.upgrade_to_pro(user_id)
+    try:
+        subscription = PaymentService.process_verified_payment(
+            user_id,
+            body.razorpay_order_id,
+            body.razorpay_payment_id,
+            "pro",
+        )
+
+    except DuplicatePaymentError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc)
+        ) from exc
+
+    except PaymentProcessingError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc)
+        ) from exc
 
     return {
         "success": True,

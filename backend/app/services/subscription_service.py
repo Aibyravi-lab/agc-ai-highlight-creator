@@ -164,6 +164,59 @@ class SubscriptionService:
         return cls.get_by_user_id(user_id)
 
     @classmethod
+    def upgrade_to_pro_in_transaction(
+        cls,
+        connection,
+        user_id: int
+    ) -> None:
+        # Same as upgrade_to_pro, but runs on a caller-owned connection so
+        # it commits atomically with the caller's other writes.
+
+        now = datetime.utcnow().isoformat()
+
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            UPDATE subscriptions
+            SET plan = ?,
+                status = ?,
+                started_at = ?,
+                expires_at = NULL,
+                updated_at = ?
+            WHERE user_id = ?
+            """,
+            (
+                SubscriptionPlan.PRO,
+                SubscriptionStatus.ACTIVE,
+                now,
+                now,
+                user_id,
+            )
+        )
+
+        if cursor.rowcount == 0:
+            # No pre-existing row (predates the subscriptions table and
+            # somehow missed the backfill) — create the PRO row directly.
+            cursor.execute(
+                """
+                INSERT INTO subscriptions (
+                    user_id, plan, status, started_at, expires_at, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    user_id,
+                    SubscriptionPlan.PRO,
+                    SubscriptionStatus.ACTIVE,
+                    now,
+                    None,
+                    now,
+                    now,
+                )
+            )
+
+    @classmethod
     def is_pro_active(
         cls,
         user_id: int

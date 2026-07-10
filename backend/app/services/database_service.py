@@ -239,6 +239,39 @@ class DatabaseService:
 
         cursor.execute(
             """
+            CREATE TABLE IF NOT EXISTS payments (
+
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                user_id INTEGER NOT NULL,
+
+                razorpay_order_id TEXT NOT NULL,
+
+                razorpay_payment_id TEXT NOT NULL UNIQUE,
+
+                plan TEXT NOT NULL,
+
+                status TEXT NOT NULL DEFAULT 'PROCESSED',
+
+                created_at TEXT NOT NULL,
+
+                processed_at TEXT NOT NULL,
+
+                FOREIGN KEY (user_id) REFERENCES users(id)
+
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_payments_user_id
+            ON payments(user_id)
+            """
+        )
+
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS password_resets (
 
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
