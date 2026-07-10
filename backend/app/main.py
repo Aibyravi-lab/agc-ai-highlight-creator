@@ -16,12 +16,9 @@ from app.services.job_service import JobService
 
 from app.routers.upload import router as upload_router
 from app.routers.analysis import router as analysis_router
-from app.routers.frame import router as frame_router
 from app.routers.vision import router as vision_router
 from app.routers.highlight import router as highlight_router
 from app.routers.pipeline import router as pipeline_router
-from app.routers.clip import router as clip_router
-from app.routers.editor import router as editor_router
 from app.routers.history import (
     router as history_router
 )
@@ -130,12 +127,9 @@ app.add_middleware(
 app.include_router(observability_router)
 app.include_router(upload_router)
 app.include_router(analysis_router)
-app.include_router(frame_router)
 app.include_router(vision_router)
 app.include_router(highlight_router)
 app.include_router(pipeline_router)
-app.include_router(clip_router)
-app.include_router(editor_router)
 app.include_router(history_router)
 app.include_router(auth_router)
 app.include_router(files_router)

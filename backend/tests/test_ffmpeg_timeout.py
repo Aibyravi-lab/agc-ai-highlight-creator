@@ -2,7 +2,7 @@
 
 Covers every subprocess call site that previously ran with no timeout:
 ffmpeg_service, video_service, frame_service, audio_service,
-caption_service, reel_service (x2), video_editor_service.
+caption_service, reel_service (x2).
 
 Each site is verified for:
   - normal execution still succeeds
@@ -29,7 +29,6 @@ from app.services import (
     audio_service,
     caption_service,
     reel_service,
-    video_editor_service,
 )
 
 
@@ -314,36 +313,3 @@ def test_reel_service_merge_clips_timeout_cleans_up(tmp_path):
     assert "timed out" in str(exc_info.value).lower()
     mock_cleanup.assert_called_once()
     assert "final_highlight_reel.mp4" in mock_cleanup.call_args.args[0]
-
-
-# ---------------------------------------------------------------------------
-# video_editor_service.VideoEditorService.create_clip()
-# ---------------------------------------------------------------------------
-
-def test_video_editor_service_create_clip_normal():
-    with patch(
-        "app.services.video_editor_service.subprocess.run",
-        return_value=_completed(),
-    ) as mock_run:
-        result = video_editor_service.VideoEditorService.create_clip(
-            "video.mp4", timestamp=10, duration=5, job_id="job-clip-normal"
-        )
-
-    assert result["timestamp"] == 10
-    assert mock_run.call_args.kwargs.get("timeout") == settings.FFMPEG_SHORT_TIMEOUT_SECONDS
-
-
-def test_video_editor_service_create_clip_timeout_cleans_up():
-    with patch(
-        "app.services.video_editor_service.subprocess.run",
-        side_effect=subprocess.TimeoutExpired(cmd="ffmpeg", timeout=120),
-    ), patch(
-        "app.services.video_editor_service.CleanupService.cleanup_temp_file"
-    ) as mock_cleanup:
-        with pytest.raises(Exception) as exc_info:
-            video_editor_service.VideoEditorService.create_clip(
-                "video.mp4", timestamp=10, duration=5, job_id="job-clip-timeout"
-            )
-
-    assert "timed out" in str(exc_info.value).lower()
-    mock_cleanup.assert_called_once()
