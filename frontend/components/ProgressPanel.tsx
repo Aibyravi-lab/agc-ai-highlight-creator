@@ -15,6 +15,8 @@ interface ProgressPanelProps {
   currentJob: PipelineJob | null;
   successMessage?: string | null;
   onClearSuccessMessage?: () => void;
+  onDownload?: () => void;
+  onCreateAnother?: () => void;
 }
 
 function StatusBadge({ label, cls }: { label: string; cls: string }) {
@@ -69,6 +71,8 @@ export function ProgressPanel({
   currentJob,
   successMessage,
   onClearSuccessMessage,
+  onDownload,
+  onCreateAnother,
 }: ProgressPanelProps) {
   const [elapsed, setElapsed] = useState(0);
   // Pinned once per job — never recalculated on re-render.
@@ -142,21 +146,40 @@ export function ProgressPanel({
             <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center text-green-400 flex-shrink-0">
               <IconCheckCircle />
             </div>
-            <div className="flex-1 min-w-0 flex flex-wrap items-start justify-between gap-4">
-              <div className="min-w-0">
-                <p className="text-green-400 font-semibold text-sm">Highlights generated successfully!</p>
-                <p className="mt-1 text-sm text-green-300/70">
-                  Your video is ready to explore — scroll down to view your highlights.
-                </p>
+            <div className="min-w-0 flex-1">
+              <p className="text-green-400 font-semibold text-base">Highlights Ready 🎉</p>
+              <p className="mt-1 text-sm text-green-300/70">
+                Your AI-generated highlights are ready to download.
+              </p>
+              <p className="mt-1 text-sm text-green-300/70">
+                Your video is ready to explore — scroll down to view your highlights.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {onDownload && (
+                  <button
+                    onClick={onDownload}
+                    className="px-4 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-500"
+                  >
+                    Download
+                  </button>
+                )}
+                {onCreateAnother && (
+                  <button
+                    onClick={onCreateAnother}
+                    className="px-4 py-1.5 rounded-lg bg-[#1a1d2e] hover:bg-[#232640] text-gray-200 text-sm font-semibold border border-[#2a2d3e] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gray-500"
+                  >
+                    Create another project
+                  </button>
+                )}
+                {onClearSuccessMessage && (
+                  <button
+                    onClick={onClearSuccessMessage}
+                    className="px-4 py-1.5 rounded-lg bg-[#1a1d2e] hover:bg-[#232640] text-gray-200 text-sm font-semibold border border-[#2a2d3e] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gray-500"
+                  >
+                    Dashboard
+                  </button>
+                )}
               </div>
-              {onClearSuccessMessage && (
-                <button
-                  onClick={onClearSuccessMessage}
-                  className="shrink-0 px-4 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-medium"
-                >
-                  Dismiss
-                </button>
-              )}
             </div>
           </div>
         </div>

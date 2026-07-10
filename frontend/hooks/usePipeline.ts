@@ -28,6 +28,7 @@ interface PipelineState {
   progressStatus: string;
   result: ExtendedPipelineResult | null;
   history: HistoryItem[];
+  historyLoading: boolean;
   allJobs: PipelineJob[];
   jobStats: JobStats | null;
   error: string | null;
@@ -44,6 +45,7 @@ export function usePipeline() {
     progressStatus: "",
     result: null,
     history: [],
+    historyLoading: true,
     allJobs: [],
     jobStats: null,
     error: null,
@@ -223,9 +225,11 @@ export function usePipeline() {
       setState((prev) => ({
         ...prev,
         history: response.data || [],
+        historyLoading: false,
       }));
     } catch (err) {
       console.error("History load failed:", err);
+      setState((prev) => ({ ...prev, historyLoading: false }));
     }
   }, []);
 
@@ -310,6 +314,7 @@ export function usePipeline() {
     progressStatus: state.progressStatus,
     result: state.result,
     history: state.history,
+    historyLoading: state.historyLoading,
     allJobs: state.allJobs,
     jobStats: state.jobStats,
     error: state.error,

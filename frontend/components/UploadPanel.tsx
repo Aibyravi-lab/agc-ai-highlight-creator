@@ -135,6 +135,14 @@ export function UploadPanel({
         Maximum video duration: {MAX_VIDEO_DURATION_MINUTES} minutes
       </p>
 
+      <p className="mt-1.5 text-xs text-gray-500">
+        Processing usually takes a few minutes — longer videos take a bit more time.
+      </p>
+
+      <p className="mt-1.5 text-xs text-gray-500">
+        🔒 Your videos remain private and are processed securely.
+      </p>
+
       {/* Selected file summary */}
       {selectedFile && (
         <div className="mt-5 rounded-2xl border border-[#1a1d2e] bg-[#0d0e14] p-5 flex items-center gap-4">

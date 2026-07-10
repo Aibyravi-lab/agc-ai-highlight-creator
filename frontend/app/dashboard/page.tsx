@@ -15,6 +15,7 @@ import { ResultPanel } from "../../components/ResultPanel";
 import { FeedbackCard } from "../../components/FeedbackCard";
 import { useAuth } from "../../context/AuthContext";
 import { track, reset } from "../../services/analytics";
+import { downloadReel, downloadVerticalReel, downloadThumbnail } from "../../services/api";
 import type { AuthUser } from "../../types/auth";
 import type { ExtendedPipelineResult, PipelineJob } from "../../types/pipeline";
 
@@ -30,8 +31,9 @@ export default function Home() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-[#08090d] flex items-center justify-center">
+      <div className="min-h-screen bg-[#08090d] flex flex-col items-center justify-center gap-3">
         <div className="w-5 h-5 rounded-full border-2 border-green-500 border-t-transparent animate-spin" />
+        <p className="text-gray-500 text-sm">Loading your dashboard...</p>
       </div>
     );
   }
@@ -62,6 +64,7 @@ function DashboardContent({
     progressStatus,
     result,
     history,
+    historyLoading,
     allJobs,
     jobStats,
     error,
@@ -72,6 +75,7 @@ function DashboardContent({
     generateHighlights,
     clearError,
     clearSuccessMessage,
+    clearResult,
   } = usePipeline();
 
   const { subscription, loading: subscriptionLoading } = useSubscription();
@@ -89,6 +93,26 @@ function DashboardContent({
       await generateHighlights(selectedFile);
     }
   };
+
+  const handleDownloadPrimary = () => {
+    if (result?.final_reel) {
+      downloadReel(result.final_reel);
+    } else if (result?.vertical_reel) {
+      downloadVerticalReel(result.vertical_reel);
+    } else if (result?.thumbnail) {
+      downloadThumbnail(result.thumbnail);
+    }
+  };
+
+  const handleCreateAnother = () => {
+    clearResult();
+    clearSuccessMessage();
+    document.getElementById("upload-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const hasPrimaryDownload = Boolean(
+    result?.final_reel || result?.vertical_reel || result?.thumbnail
+  );
 
   useEffect(() => {
     if (result !== null && result !== prevResultRef.current) {
@@ -143,7 +167,7 @@ function DashboardContent({
         </div>
 
         {/* Upload */}
-        <section>
+        <section id="upload-panel">
           <UploadPanel
             selectedFile={selectedFile}
             loading={loading}
@@ -169,6 +193,8 @@ function DashboardContent({
             currentJob={currentJob}
             successMessage={successMessage}
             onClearSuccessMessage={clearSuccessMessage}
+            onDownload={hasPrimaryDownload ? handleDownloadPrimary : undefined}
+            onCreateAnother={handleCreateAnother}
           />
         </section>
 
@@ -185,7 +211,7 @@ function DashboardContent({
 
         {/* History */}
         <section>
-          <HistoryPanel history={history} />
+          <HistoryPanel history={history} historyLoading={historyLoading} />
         </section>
 
         {/* My Projects */}
