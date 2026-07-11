@@ -45,7 +45,9 @@ type AnalyticsEvent =
   | "landing_scroll_25"
   | "landing_scroll_50"
   | "landing_scroll_75"
-  | "landing_scroll_100";
+  | "landing_scroll_100"
+  // AGC-083 signup conversion analytics
+  | "signup_completed";
 
 // Analytics must never break the user flow — every call is wrapped so a
 // PostHog/network failure is swallowed instead of propagating into caller code.

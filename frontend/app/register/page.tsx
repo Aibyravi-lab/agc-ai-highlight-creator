@@ -53,6 +53,7 @@ export default function RegisterPage() {
       await register(name, email, password);
       track("User Registered");
       track("Signup Completed");
+      track("signup_completed");
       setRegistered(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
