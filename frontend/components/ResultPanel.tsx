@@ -9,6 +9,7 @@ import {
 } from "../services/api";
 import { track } from "../services/analytics";
 import { useAuthedMediaUrl } from "../hooks/useAuthedMediaUrl";
+import { selectDisplayReasons } from "../utils/highlightReasons";
 import type { ExtendedPipelineResult, HighlightItem } from "../types/pipeline";
 
 interface ResultPanelProps {
@@ -232,33 +233,54 @@ export function ResultPanel({ result }: ResultPanelProps) {
             </p>
             <div className="grid gap-4 md:grid-cols-2">
               {result.all_highlights!.map(
-                (highlight: HighlightItem, index: number) => (
-                  <div
-                    key={index}
-                    className="rounded-lg bg-[#0a0b0f] border border-[#1a1d2e] p-4"
-                  >
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">
-                      Clip {index + 1}
-                    </p>
-                    <HighlightClipPreview clipPath={highlight.clip_path} />
-                    <div className="space-y-1 text-sm text-gray-400">
-                      <p>
-                        <span className="text-gray-600">Timestamp</span>{" "}
-                        {highlight.timestamp}s
+                (highlight: HighlightItem, index: number) => {
+                  const displayReasons = selectDisplayReasons(
+                    highlight.explanation?.reasons
+                  );
+
+                  return (
+                    <div
+                      key={index}
+                      className="rounded-lg bg-[#0a0b0f] border border-[#1a1d2e] p-4"
+                    >
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">
+                        Clip {index + 1}
                       </p>
-                      {highlight.action && (
+                      <HighlightClipPreview clipPath={highlight.clip_path} />
+                      <div className="space-y-1 text-sm text-gray-400">
                         <p>
-                          <span className="text-gray-600">Action</span>{" "}
-                          {highlight.action}
+                          <span className="text-gray-600">Timestamp</span>{" "}
+                          {highlight.timestamp}s
                         </p>
+                        {highlight.action && (
+                          <p>
+                            <span className="text-gray-600">Action</span>{" "}
+                            {highlight.action}
+                          </p>
+                        )}
+                        <p>
+                          <span className="text-gray-600">Score</span>{" "}
+                          {(highlight.score * 100).toFixed(1)}%
+                        </p>
+                      </div>
+                      {displayReasons.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-[#1a1d2e]">
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-2">
+                            Why this moment?
+                          </p>
+                          <ul className="space-y-1 text-sm text-gray-400">
+                            {displayReasons.map((reason) => (
+                              <li key={reason} className="flex items-start gap-2">
+                                <span className="text-green-500 mt-0.5">✓</span>
+                                <span>{reason}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
                       )}
-                      <p>
-                        <span className="text-gray-600">Score</span>{" "}
-                        {(highlight.score * 100).toFixed(1)}%
-                      </p>
                     </div>
-                  </div>
-                )
+                  );
+                }
               )}
             </div>
           </div>

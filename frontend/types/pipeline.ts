@@ -59,6 +59,10 @@ export interface ProcessingStats {
   processing_time?: number;
 }
 
+export interface HighlightExplanation {
+  reasons?: string[];
+}
+
 export interface HighlightItem {
   timestamp: number;
   duration?: number;
@@ -66,6 +70,7 @@ export interface HighlightItem {
   label?: string;
   action?: string;
   clip_path?: string;
+  explanation?: HighlightExplanation;
 }
 
 export interface ExtendedPipelineResult {
