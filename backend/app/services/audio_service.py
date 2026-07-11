@@ -4,6 +4,12 @@ import numpy as np
 from app.config.config import settings
 from app.services.cleanup_service import CleanupService
 from app.services.job_storage_service import JobStorageService
+from app.services.logger_service import LoggerService
+from app.services.video_service import has_audio_stream
+
+
+class NoAudioStreamError(Exception):
+    """Raised when the input video has no audio stream to extract."""
 
 
 class AudioService:
@@ -77,6 +83,11 @@ class AudioService:
                 temp_folder
                 / "temp_audio.wav"
             )
+
+            if not has_audio_stream(video_path):
+                raise NoAudioStreamError(
+                    f"No audio stream found in {video_path}"
+                )
 
             cls.extract_audio(
                 video_path=video_path,
@@ -185,6 +196,22 @@ class AudioService:
 
                 "is_silent":
                 False
+
+            }
+
+        except NoAudioStreamError:
+
+            LoggerService.info(
+                "No audio stream found in video — "
+                "using neutral/silent audio score",
+                job_id=job_id
+            )
+
+            return {
+
+                "audio_map": {},
+
+                "is_silent": True
 
             }
 

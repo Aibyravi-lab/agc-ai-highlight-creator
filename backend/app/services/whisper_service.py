@@ -3,6 +3,8 @@ import time
 import whisper
 
 from app.services.profiler_service import PipelineProfiler
+from app.services.logger_service import LoggerService
+from app.services.video_service import has_audio_stream
 
 
 class WhisperService:
@@ -31,12 +33,30 @@ class WhisperService:
 
         return cls._model
 
+    @staticmethod
+    def _neutral_transcription() -> dict:
+
+        return {
+            "text": "",
+            "segments": [],
+            "language": None
+        }
+
     @classmethod
     def transcribe_video(
         cls,
         video_path: str,
         profiler: PipelineProfiler | None = None
     ):
+
+        if not has_audio_stream(video_path):
+
+            LoggerService.info(
+                f"No audio stream found in {video_path} — "
+                "skipping transcription"
+            )
+
+            return cls._neutral_transcription()
 
         if profiler is None:
 

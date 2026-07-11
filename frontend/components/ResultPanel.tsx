@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   downloadReel,
   downloadVerticalReel,
@@ -63,14 +63,54 @@ function DownloadButton({
 }
 
 function HighlightClipPreview({ clipPath }: { clipPath?: string }) {
-  const clipUrl = useAuthedMediaUrl(clipPath);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [shouldLoad, setShouldLoad] = useState(false);
+  const clipUrl = useAuthedMediaUrl(shouldLoad ? clipPath : null);
+
+  // Fetching every highlight clip's authenticated blob the instant the
+  // result renders overloads the network/memory when a job has many
+  // highlights. Defer the fetch until the clip is near the viewport (or
+  // the user explicitly asks for it) instead of loading eagerly.
+  useEffect(() => {
+    if (shouldLoad) return;
+
+    const node = containerRef.current;
+    if (!node || typeof IntersectionObserver === "undefined") {
+      setShouldLoad(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setShouldLoad(true);
+        }
+      },
+      { rootMargin: "200px" }
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [shouldLoad]);
 
   if (!clipPath) return null;
 
   return (
-    <video controls className="w-full max-h-[270px] rounded-md mb-3">
-      {clipUrl && <source src={clipUrl} type="video/mp4" />}
-    </video>
+    <div ref={containerRef} className="mb-3">
+      {shouldLoad ? (
+        <video controls className="w-full max-h-[270px] rounded-md">
+          {clipUrl && <source src={clipUrl} type="video/mp4" />}
+        </video>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setShouldLoad(true)}
+          className="w-full h-[160px] rounded-md bg-[#0a0b0f] border border-[#1a1d2e] flex items-center justify-center text-sm text-gray-500 hover:text-white hover:border-green-500/40 transition-colors"
+        >
+          ▶ Load clip preview
+        </button>
+      )}
+    </div>
   );
 }
 

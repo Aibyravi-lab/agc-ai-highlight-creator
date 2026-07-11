@@ -115,16 +115,8 @@ export function usePipeline() {
           setState((prev) => {
             return { ...prev, result: job.result ?? null, loading: false, progress: 100, progressStatus: "Completed", currentJobId: null, selectedFile: null, successMessage: "Highlights generated successfully!", fileInputKey: prev.fileInputKey + 1 };
           });
-          // Refresh all dashboard sections immediately after completion
-          getHistory()
-            .then((res) => setState((prev) => ({ ...prev, history: res.data || [] })))
-            .catch((err) => console.error("History refresh failed:", err));
-          getJobs()
-            .then((res) => setState((prev) => ({ ...prev, allJobs: res.data || [] })))
-            .catch((err) => console.error("Jobs refresh failed:", err));
-          getJobStats()
-            .then((res) => setState((prev) => ({ ...prev, jobStats: res.data || null })))
-            .catch((err) => console.error("Stats refresh failed:", err));
+          // History/jobs/stats are already refreshed by the global 5s
+          // polling interval below — no need to duplicate those GETs here.
           refreshUser();
         } else if (job.status === "failed") {
           stopPolling();

@@ -85,3 +85,46 @@ def get_video_metadata(file_path: str):
     }
 
     return metadata
+
+
+def has_audio_stream(file_path: str) -> bool:
+    """
+    Detect whether a video file contains at least one audio stream,
+    using ffprobe. Any probe failure (missing file, timeout, malformed
+    output) is treated as "no audio" so callers can fall back to
+    silent-audio handling instead of crashing.
+    """
+
+    command = [
+        "ffprobe",
+        "-v",
+        "quiet",
+        "-print_format",
+        "json",
+        "-show_streams",
+        "-select_streams",
+        "a",
+        str(file_path)
+    ]
+
+    try:
+
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=settings.FFMPEG_QUICK_TIMEOUT_SECONDS
+        )
+
+    except subprocess.TimeoutExpired:
+        return False
+
+    if result.returncode != 0:
+        return False
+
+    try:
+        data = json.loads(result.stdout)
+    except Exception:
+        return False
+
+    return bool(data.get("streams"))

@@ -215,6 +215,8 @@ def test_audio_service_build_audio_map_survives_ffmpeg_timeout():
     silent-audio fallback (not a hard crash) — a timeout must keep doing
     so rather than blowing up the whole highlight job."""
     with patch(
+        "app.services.audio_service.has_audio_stream", return_value=True
+    ), patch(
         "app.services.audio_service.subprocess.run",
         side_effect=subprocess.TimeoutExpired(cmd="ffmpeg", timeout=600),
     ):
