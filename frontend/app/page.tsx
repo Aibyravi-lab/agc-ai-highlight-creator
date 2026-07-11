@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "../context/AuthContext";
@@ -21,10 +21,13 @@ export default function LandingPage() {
     }
   }, [loading, user, router]);
 
+  useScrollDepthTracking();
+
   return (
     <div className="min-h-screen bg-[#08090d] text-white">
       <Nav />
       <Hero />
+      <DemoSection />
       <ProductShowcase />
       <BeforeAfter />
       <HowItWorks />
@@ -39,6 +42,37 @@ export default function LandingPage() {
       <Footer />
     </div>
   );
+}
+
+// ─── Scroll Depth Tracking ─────────────────────────────────────────────────────
+
+const SCROLL_DEPTH_EVENTS = {
+  25: "landing_scroll_25",
+  50: "landing_scroll_50",
+  75: "landing_scroll_75",
+  100: "landing_scroll_100",
+} as const;
+
+function useScrollDepthTracking() {
+  const firedRef = useRef<Set<number>>(new Set());
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollableHeight = document.documentElement.scrollHeight - window.innerHeight;
+      if (scrollableHeight <= 0) return;
+      const percent = (window.scrollY / scrollableHeight) * 100;
+
+      for (const threshold of [25, 50, 75, 100] as const) {
+        if (percent >= threshold && !firedRef.current.has(threshold)) {
+          firedRef.current.add(threshold);
+          track(SCROLL_DEPTH_EVENTS[threshold]);
+        }
+      }
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 }
 
 // ─── Navbar ───────────────────────────────────────────────────────────────────
@@ -157,16 +191,18 @@ function Hero() {
         <div className="flex flex-col sm:flex-row gap-4 justify-center md:justify-start mb-10">
           <Link
             href="/register"
+            onClick={() => track("hero_cta_clicked")}
             className="bg-green-600 hover:bg-green-700 text-white font-semibold px-8 py-3.5 rounded-xl text-base transition-colors text-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-300"
           >
             Start Free
           </Link>
-          <Link
-            href="/pricing"
+          <button
+            type="button"
+            onClick={() => document.getElementById("demo")?.scrollIntoView({ behavior: "smooth" })}
             className="border border-[#1a1d2e] hover:border-[#2a2d3e] text-gray-300 hover:text-white font-medium px-8 py-3.5 rounded-xl text-base transition-colors text-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-500"
           >
-            View Pricing
-          </Link>
+            Watch Demo
+          </button>
         </div>
 
         <TrustBadges />
@@ -251,6 +287,103 @@ function TrustBadges() {
         </span>
       ))}
     </div>
+  );
+}
+
+// ─── Demo ─────────────────────────────────────────────────────────────────────
+
+function DemoSection() {
+  const sectionRef = useRef<HTMLElement>(null);
+  const viewedRef = useRef(false);
+
+  useEffect(() => {
+    const node = sectionRef.current;
+    if (!node) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !viewedRef.current) {
+          viewedRef.current = true;
+          track("demo_viewed");
+        }
+      },
+      { threshold: 0.4 }
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <section id="demo" ref={sectionRef} className="bg-[#0a0b10] border-y border-[#1a1d2e] py-20">
+      <div className="max-w-6xl mx-auto px-6">
+        <div className="text-center mb-14">
+          <h2 className="text-3xl md:text-4xl font-bold mb-3">See How It Works</h2>
+          <p className="text-gray-400">
+            An illustrative preview of the Vedzovi workflow — from raw upload to ready-to-post highlights.
+          </p>
+        </div>
+
+        <div className="flex flex-col md:flex-row items-center gap-4 md:gap-6">
+          <div className="flex-1 bg-[#0d0e14] border border-[#1a1d2e] rounded-2xl p-8 w-full">
+            <div className="w-10 h-10 bg-gray-500/10 rounded-xl flex items-center justify-center text-gray-400 mb-5">
+              <IconFilm />
+            </div>
+            <h3 className="text-lg font-semibold text-white mb-2">Your Original Footage</h3>
+            <p className="text-gray-500 text-sm leading-relaxed mb-5">
+              A single long-form recording, uploaded as-is.
+            </p>
+            <div className="h-2 bg-[#080910] border border-[#1a1d2e] rounded-full overflow-hidden">
+              <div className="h-full w-full bg-[#1a1d2e]" />
+            </div>
+          </div>
+
+          <div className="flex-shrink-0 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-full bg-green-500/10 border border-green-500/20 flex items-center justify-center">
+              <svg
+                viewBox="0 0 24 24"
+                className="w-5 h-5 text-green-400 hidden md:block"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2.5}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+              </svg>
+              <svg
+                viewBox="0 0 24 24"
+                className="w-5 h-5 text-green-400 md:hidden"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2.5}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 13.5L12 21m0 0l-7.5-7.5M12 21V3" />
+              </svg>
+            </div>
+          </div>
+
+          <div className="flex-1 bg-[#0d0e14] border border-green-500/20 rounded-2xl p-8 w-full">
+            <div className="w-10 h-10 bg-green-500/10 rounded-xl flex items-center justify-center text-green-400 mb-5">
+              <IconBolt />
+            </div>
+            <h3 className="text-lg font-semibold text-white mb-2">AI-Generated Highlights</h3>
+            <p className="text-gray-500 text-sm leading-relaxed mb-5">
+              Scored moments, cropped to 9:16, with thumbnails ready to post.
+            </p>
+            <div className="flex items-center gap-2">
+              {[94, 88, 76].map((score) => (
+                <div key={score} className="flex-1 h-2 bg-[#080910] border border-[#1a1d2e] rounded-full overflow-hidden">
+                  <div className="h-full bg-green-500 rounded-full" style={{ width: `${score}%` }} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <p className="text-gray-600 text-xs text-center mt-8">
+          Preview shown is illustrative of the processing workflow, not actual output.
+        </p>
+      </div>
+    </section>
   );
 }
 
@@ -830,7 +963,7 @@ function TrustSection() {
       icon: <IconBolt />,
       title: "AI Powered",
       badge: null,
-      desc: "Frame vision analysis and Whisper audio transcription detect highlights automatically.",
+      desc: "Frame vision analysis and audio pattern detection find highlights automatically.",
     },
     {
       icon: <IconServer />,
@@ -961,6 +1094,9 @@ function FAQ() {
           <details
             key={item.q}
             className="group bg-[#0d0e14] border border-[#1a1d2e] rounded-2xl overflow-hidden"
+            onToggle={(e) => {
+              if (e.currentTarget.open) track("faq_expanded", { question: item.q });
+            }}
           >
             <summary className="flex items-center justify-between px-6 py-4 cursor-pointer list-none hover:bg-[#1a1d2e]/40 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-500 focus-visible:-outline-offset-2">
               <span className="text-sm font-semibold text-white">{item.q}</span>
@@ -1028,6 +1164,7 @@ function FinalCTA() {
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Link
             href="/register"
+            onClick={() => track("final_cta_clicked")}
             className="bg-green-600 hover:bg-green-700 text-white font-semibold px-10 py-4 rounded-xl text-base transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-300"
           >
             Start Free Beta

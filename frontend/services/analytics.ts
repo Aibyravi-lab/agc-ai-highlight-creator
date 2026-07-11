@@ -36,7 +36,16 @@ type AnalyticsEvent =
   | "Checkout Started"
   | "Payment Success"
   | "Payment Failed"
-  | "Logout";
+  | "Logout"
+  // AGC-082 landing page conversion tracking
+  | "hero_cta_clicked"
+  | "demo_viewed"
+  | "faq_expanded"
+  | "final_cta_clicked"
+  | "landing_scroll_25"
+  | "landing_scroll_50"
+  | "landing_scroll_75"
+  | "landing_scroll_100";
 
 // Analytics must never break the user flow — every call is wrapped so a
 // PostHog/network failure is swallowed instead of propagating into caller code.
