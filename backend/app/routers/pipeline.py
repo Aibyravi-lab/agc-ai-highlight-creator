@@ -7,6 +7,7 @@ from app.services.rate_limit_service import RateLimitService
 from app.services.background_job_service import (
     BackgroundJobService
 )
+from app.services.maintenance_service import MaintenanceService
 from app.config.config import settings
 from app.services.logger_service import LoggerService
 from app.services.video_path_service import (
@@ -29,6 +30,7 @@ class PipelineError:
     ENDPOINT_REMOVED = "ENDPOINT_REMOVED"
     INVALID_VIDEO_PATH = "INVALID_VIDEO_PATH"
     RATE_LIMITED = "RATE_LIMITED"
+    MAINTENANCE_MODE = "MAINTENANCE_MODE"
 
 
 def _sanitize_job(job: dict) -> dict:
@@ -44,6 +46,20 @@ def _sanitize_job(job: dict) -> dict:
     }
 
     return sanitized
+
+
+def _maintenance_mode_error() -> HTTPException:
+
+    return HTTPException(
+        status_code=503,
+        detail={
+            "code": PipelineError.MAINTENANCE_MODE,
+            "message": MaintenanceService.MESSAGE
+        },
+        headers={
+            "Retry-After": str(MaintenanceService.RETRY_AFTER_SECONDS)
+        }
+    )
 
 
 def _insufficient_credits_error() -> HTTPException:
@@ -89,6 +105,13 @@ def start_video_processing(
 ):
 
     user_id = current_user["id"]
+
+    # AGC-084: checked first — before rate-limit consumption, credit
+    # deduction, JobService.create_job(), and BackgroundJobService.start_job()
+    # — so a maintenance window never consumes a rate-limit attempt or a
+    # credit for a request that will not run.
+    if MaintenanceService.is_maintenance_mode():
+        raise _maintenance_mode_error()
 
     try:
         video_path = VideoPathService.validate_upload_path(video_path)

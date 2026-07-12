@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { MAX_UPLOAD_SIZE_MB, MAX_VIDEO_DURATION_MINUTES } from "../utils/uploadLimits";
+import { isUploadInteractionDisabled, isGenerateDisabled } from "../utils/uploadPanelState";
 
 interface UploadPanelProps {
   selectedFile: File | null;
@@ -14,6 +15,7 @@ interface UploadPanelProps {
   creditsRemaining: number;
   isPro?: boolean;
   subscriptionLoading?: boolean;
+  maintenanceMode?: boolean;
 }
 
 const SUPPORTED_FORMATS_LABEL = "MP4 • MOV • AVI • MKV";
@@ -42,12 +44,21 @@ export function UploadPanel({
   creditsRemaining,
   isPro = false,
   subscriptionLoading = false,
+  maintenanceMode = false,
 }: UploadPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   const isUploading = loading && progressStatus.toLowerCase().startsWith("uploading");
   const outOfCredits = !subscriptionLoading && !isPro && creditsRemaining <= 0;
+  const disabled = isUploadInteractionDisabled({ maintenanceMode, outOfCredits });
+  const generateDisabled = isGenerateDisabled({
+    loading,
+    hasSelectedFile: Boolean(selectedFile),
+    maintenanceMode,
+    outOfCredits,
+    subscriptionLoading,
+  });
 
   const handleFiles = (files: FileList | null) => {
     if (files && files.length > 0) {
@@ -65,7 +76,7 @@ export function UploadPanel({
         type="file"
         accept="video/*"
         className="hidden"
-        disabled={outOfCredits}
+        disabled={disabled}
         onChange={(e) => handleFiles(e.target.files)}
       />
 
@@ -73,33 +84,33 @@ export function UploadPanel({
       <div className="relative">
         <div
           role="button"
-          tabIndex={outOfCredits ? -1 : 0}
-          aria-disabled={outOfCredits}
+          tabIndex={disabled ? -1 : 0}
+          aria-disabled={disabled}
           aria-label="Upload video: drag and drop or click to browse"
           onClick={() => {
-            if (!outOfCredits) inputRef.current?.click();
+            if (!disabled) inputRef.current?.click();
           }}
           onKeyDown={(e) => {
-            if (outOfCredits) return;
+            if (disabled) return;
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
               inputRef.current?.click();
             }
           }}
           onDragOver={(e) => {
-            if (outOfCredits) return;
+            if (disabled) return;
             e.preventDefault();
             setIsDragging(true);
           }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={(e) => {
-            if (outOfCredits) return;
+            if (disabled) return;
             e.preventDefault();
             setIsDragging(false);
             handleFiles(e.dataTransfer.files);
           }}
           className={`flex flex-col items-center justify-center text-center rounded-2xl border-2 border-dashed px-6 py-14 transition-colors ${
-            outOfCredits
+            disabled
               ? "opacity-50 cursor-not-allowed pointer-events-none border-[#2a2d3e] bg-[#0d0e14]"
               : isDragging
               ? "border-green-500 bg-green-500/5 cursor-pointer"
@@ -113,13 +124,22 @@ export function UploadPanel({
           <p className="text-gray-500 text-sm mt-1.5">or click to browse your files</p>
         </div>
 
-        {outOfCredits && (
+        {maintenanceMode ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center rounded-2xl bg-[#0d0e14]/85 px-6">
-            <p className="text-white font-semibold text-base">🔒 Upload disabled</p>
+            <p className="text-white font-semibold text-base">🔧 Upload paused</p>
             <p className="text-gray-400 text-sm mt-1.5 max-w-xs">
-              Upgrade to Pro to continue generating AI highlights.
+              Vedzovi is upgrading. Uploads resume shortly.
             </p>
           </div>
+        ) : (
+          outOfCredits && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-center rounded-2xl bg-[#0d0e14]/85 px-6">
+              <p className="text-white font-semibold text-base">🔒 Upload disabled</p>
+              <p className="text-gray-400 text-sm mt-1.5 max-w-xs">
+                Upgrade to Pro to continue generating AI highlights.
+              </p>
+            </div>
+          )
         )}
       </div>
 
@@ -164,11 +184,11 @@ export function UploadPanel({
 
       <button
         onClick={onGenerateHighlights}
-        disabled={loading || !selectedFile || outOfCredits || subscriptionLoading}
+        disabled={generateDisabled}
         className={`mt-5 w-full text-white p-4 rounded-xl font-semibold transition-colors ${
           loading
             ? "bg-green-600/50 cursor-wait"
-            : !selectedFile || outOfCredits || subscriptionLoading
+            : generateDisabled
             ? "bg-green-600/50 cursor-not-allowed"
             : "bg-green-600 hover:bg-green-700 cursor-pointer"
         }`}
@@ -182,7 +202,7 @@ export function UploadPanel({
         </div>
       )}
 
-      {outOfCredits && !loading && (
+      {!maintenanceMode && outOfCredits && !loading && (
         <div className="mt-4 text-center">
           <p className="text-xs text-yellow-400 leading-relaxed">
             You&apos;ve used all your free credits.

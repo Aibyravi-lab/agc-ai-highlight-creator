@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { usePipeline } from "../../hooks/usePipeline";
 import { useSubscription } from "../../hooks/useSubscription";
+import { useMaintenanceStatus } from "../../hooks/useMaintenanceStatus";
 import { UploadPanel } from "../../components/UploadPanel";
+import { MaintenanceBanner } from "../../components/MaintenanceBanner";
 import { ProgressPanel } from "../../components/ProgressPanel";
 import { StatsPanel } from "../../components/StatsPanel";
 import { HistoryPanel } from "../../components/HistoryPanel";
@@ -80,6 +82,7 @@ function DashboardContent({
 
   const { subscription, loading: subscriptionLoading } = useSubscription();
   const isPro = subscription?.plan === "PRO";
+  const maintenanceMode = useMaintenanceStatus();
 
   useEffect(() => {
     track("Dashboard Viewed");
@@ -174,6 +177,8 @@ function DashboardContent({
           </div>
         </div>
 
+        {maintenanceMode && <MaintenanceBanner />}
+
         {/* Upload */}
         <section id="upload-panel">
           <UploadPanel
@@ -186,6 +191,7 @@ function DashboardContent({
             creditsRemaining={user.credits_remaining}
             isPro={isPro}
             subscriptionLoading={subscriptionLoading}
+            maintenanceMode={maintenanceMode}
           />
         </section>
 

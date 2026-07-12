@@ -115,6 +115,14 @@ class Settings(BaseSettings):
         "storage/jobs"
     )
 
+    # AGC-084: file-based maintenance sentinel. Presence of this file means
+    # maintenance mode is ON. Toggled over SSH via scripts/maintenance.sh —
+    # there is no admin auth surface or public toggle endpoint.
+    MAINTENANCE_FLAG_PATH: str = os.getenv(
+        "MAINTENANCE_FLAG_PATH",
+        "storage/maintenance.flag"
+    )
+
     MAX_UPLOAD_SIZE: int = int(
         os.getenv(
             "MAX_UPLOAD_SIZE",

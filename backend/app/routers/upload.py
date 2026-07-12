@@ -18,6 +18,7 @@ from app.dependencies import get_current_user
 from app.services.disk_space_service import DiskSpaceService
 from app.services.file_safety_service import FileSafetyService
 from app.services.logger_service import LoggerService
+from app.services.maintenance_service import MaintenanceService
 from app.services.mime_validation_service import MimeValidationService
 from app.services.rate_limit_service import RateLimitService
 from app.services.upload_cache_service import UploadCacheService
@@ -66,6 +67,7 @@ class UploadError:
     INVALID_VIDEO_METADATA = "INVALID_VIDEO_METADATA"
     RATE_LIMITED = "RATE_LIMITED"
     INSUFFICIENT_DISK_SPACE = "INSUFFICIENT_DISK_SPACE"
+    MAINTENANCE_MODE = "MAINTENANCE_MODE"
 
 
 def _sanitize_stem(raw_stem: str) -> str:
@@ -93,6 +95,23 @@ async def upload_video(
     file: UploadFile = File(...),
     current_user: dict = Depends(get_current_user)
 ):
+
+    # ── Maintenance check ─────────────────────────────────────
+    # AGC-084: checked first, ahead of every other validation, so a
+    # maintenance window rejects new uploads without touching disk,
+    # rate-limit budget, or the filesystem.
+    if MaintenanceService.is_maintenance_mode():
+
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": UploadError.MAINTENANCE_MODE,
+                "message": MaintenanceService.MESSAGE
+            },
+            headers={
+                "Retry-After": str(MaintenanceService.RETRY_AFTER_SECONDS)
+            }
+        )
 
     # ── 0. Disk space check ───────────────────────────────────
     if not DiskSpaceService.has_sufficient_space():

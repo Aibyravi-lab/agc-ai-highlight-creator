@@ -183,6 +183,33 @@ export async function getProgress() {
   return authedRequest("/pipeline/progress");
 }
 
+/**
+ * AGC-084: public, unauthenticated maintenance status. Callers must fail
+ * open on error — the backend's 503 MAINTENANCE_MODE response on the
+ * actual action (upload/pipeline start) is the authoritative enforcement
+ * path, this is only a UX signal.
+ */
+export async function getMaintenanceStatus(): Promise<{ maintenance: boolean }> {
+  return request("/maintenance-status");
+}
+
+/**
+ * Resolves the maintenance state for one poll tick. Fails open to
+ * `false` on any check failure (network error or non-OK response) —
+ * never preserves a stale `true`, never throws. The backend's 503
+ * MAINTENANCE_MODE response on the actual upload/pipeline-start request
+ * remains the authoritative enforcement boundary if maintenance is
+ * genuinely still ON; this only drives dashboard UX.
+ */
+export async function resolveMaintenanceState(): Promise<boolean> {
+  try {
+    const { maintenance } = await getMaintenanceStatus();
+    return maintenance;
+  } catch {
+    return false;
+  }
+}
+
 export async function getHistory() {
   const response = await authedRequest("/history/");
   return {

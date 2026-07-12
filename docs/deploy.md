@@ -223,7 +223,72 @@ Run these after every deployment or cert renewal:
 
 ---
 
-## 9 — Common Issues
+## 9 — Safe Deployment (Maintenance Mode)
+
+AGC-084 adds a file-based maintenance sentinel so planned deployments don't
+land mid-request. `MaintenanceService` (`backend/app/services/maintenance_service.py`)
+does a live, uncached check of `MAINTENANCE_FLAG_PATH` (default
+`storage/maintenance.flag` under `backend/`) on every `/upload` and
+`/pipeline/start` request. Toggle it over SSH with `scripts/maintenance.sh`
+— there is no public toggle endpoint and no admin auth surface; the SSH
+session is the operator trust boundary.
+
+Every planned deployment must follow this exact sequence:
+
+1. **Maintenance ON** — `bash scripts/maintenance.sh on`
+2. **Confirm maintenance ON** through the public status endpoint —
+   `curl -s https://api.vedzovi.com/maintenance-status` must return
+   `{"maintenance": true}`
+3. **Stable drain** — `bash scripts/maintenance.sh drain` (blocks until 0
+   active jobs are observed on 3 consecutive checks; see below)
+4. **Confirm drained** — the `drain` command only exits 0 once stable
+5. **Pull / deploy code** — `git pull`, install dependencies, build frontend
+6. **Restart backend** — `systemctl restart agc-backend` (or equivalent)
+7. **Verify backend health/readiness** — `curl -Is https://api.vedzovi.com/health`
+   and `/ready` both return `200`
+8. **Restart frontend** — `systemctl restart agc-frontend` (or equivalent)
+9. **Verify frontend** — `curl -Is https://vedzovi.com` returns `200`
+10. **Keep maintenance ON during all validation above** — do not turn it
+    off until health/readiness and the frontend are confirmed working
+11. **Maintenance OFF** — `bash scripts/maintenance.sh off`
+12. **Confirm maintenance OFF** — `/maintenance-status` returns
+    `{"maintenance": false}`
+13. **Verify new upload/pipeline processing is available** — upload and run
+    a short test video end-to-end
+
+### The drain race — documented, not eliminated
+
+Turning maintenance ON and then checking that active jobs == 0 once is
+**not** sufficient proof of a stable drain: a `/pipeline/start` request can
+read maintenance OFF immediately before the flag is created, then still
+reach `JobService.create_job()` after maintenance turns ON. `drain` does
+not make this race mathematically impossible — it mitigates it
+operationally by waiting a ~3s grace period, then polling the real
+`jobs` table (`status IN ('pending', 'processing')`) and requiring 0 for 3
+consecutive checks, ~2s apart, resetting the counter if a nonzero count
+reappears. This bounds the race window; it does not close it. `drain`
+never kills jobs, modifies job rows, marks jobs failed, or refunds
+credits — that is unplanned-interruption recovery and is **AGC-085
+scope**, not AGC-084's. AGC-084 protects planned deployments only.
+
+### Operational notes
+
+- The maintenance flag is a plain file — its state survives backend
+  restarts. **Forgetting step 11 (maintenance OFF) leaves new uploads and
+  pipeline starts paused indefinitely** even after a successful deploy.
+- Existing uploaded files, history, projects, results, and file downloads
+  are never affected by maintenance mode — only new `/upload` and
+  `/pipeline/start` requests are blocked (`503 MAINTENANCE_MODE`).
+- The frontend dashboard polls `/maintenance-status` every ~5s and shows a
+  calm banner while ON; it fails open (does not force `maintenance=true`)
+  if that poll itself fails, so a transient status-endpoint hiccup never
+  blocks access to history/results. The backend's `503 MAINTENANCE_MODE`
+  response remains the authoritative enforcement path regardless of what
+  the frontend has polled.
+
+---
+
+## 10 — Common Issues
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|

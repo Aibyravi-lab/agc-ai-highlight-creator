@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
+from app.services.maintenance_service import MaintenanceService
 from app.services.observability_service import ObservabilityService
 
 router = APIRouter(tags=["Observability"])
@@ -32,3 +33,11 @@ def ready():
 def metrics():
 
     return ObservabilityService.get_metrics()
+
+
+@router.get("/maintenance-status")
+def maintenance_status():
+
+    return {
+        "maintenance": MaintenanceService.is_maintenance_mode()
+    }
