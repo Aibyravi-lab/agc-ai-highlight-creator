@@ -1,3 +1,4 @@
+import math
 import subprocess
 import wave
 import numpy as np
@@ -6,6 +7,10 @@ from app.services.cleanup_service import CleanupService
 from app.services.job_storage_service import JobStorageService
 from app.services.logger_service import LoggerService
 from app.services.video_service import has_audio_stream
+
+# Max representable |sample| magnitude for signed 16-bit PCM — the
+# reference "full scale" against which absolute dBFS is measured.
+PCM_INT16_FULL_SCALE = 32767.0
 
 
 class NoAudioStreamError(Exception):
@@ -130,6 +135,29 @@ class AudioService:
             )
 
             if max_amplitude == 0:
+
+                return {
+                    "audio_map": {},
+                    "is_silent": True
+                }
+
+            # Absolute noise-floor gate — must run BEFORE relative
+            # peak/max_amplitude normalization below. Without it, a track
+            # containing nothing but encoder noise floor (nonzero, but
+            # inaudible) would still normalize its loudest instant to 1.0.
+            max_volume_dbfs = 20 * math.log10(
+                max_amplitude / PCM_INT16_FULL_SCALE
+            )
+
+            if max_volume_dbfs <= settings.AUDIO_SILENCE_THRESHOLD_DB:
+
+                LoggerService.info(
+                    "Audio stream present but below silence threshold "
+                    f"({round(max_volume_dbfs, 1)} dBFS <= "
+                    f"{settings.AUDIO_SILENCE_THRESHOLD_DB} dBFS) — "
+                    "treating as silent",
+                    job_id=job_id
+                )
 
                 return {
                     "audio_map": {},

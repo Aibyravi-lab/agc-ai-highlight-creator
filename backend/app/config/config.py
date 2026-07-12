@@ -288,6 +288,31 @@ class Settings(BaseSettings):
         )
     )
 
+    # AGC-082.2 — absolute noise-floor gate, in dBFS (decibels relative to
+    # 16-bit PCM full scale). AudioService.build_audio_map() classifies a
+    # decoded audio track as silent when its loudest sample is at or below
+    # this level, BEFORE the existing peak/max_amplitude normalization runs.
+    # Without this gate, any nonzero track — even pure encoder noise floor —
+    # normalizes its single loudest instant to a score of 1.0, regardless of
+    # how quiet that track actually is in absolute terms.
+    #
+    # -60 dBFS matches ffmpeg's own `silencedetect` filter default noise
+    # threshold, a widely used convention for "no meaningful audio content."
+    # Production evidence for this fix measured -76.3 dBFS max_volume on a
+    # near-silent recording (comfortably below this gate), while genuine
+    # quiet-but-meaningful gameplay audio (dialogue, ambience, UI sounds)
+    # typically peaks well above -40 dBFS and is unaffected.
+    #
+    # This is a data-classification threshold, not a scoring weight/threshold
+    # — it does not change SYNERGY_SIGNAL_THRESHOLD, category weights, or any
+    # explainability reason threshold.
+    AUDIO_SILENCE_THRESHOLD_DB: float = float(
+        os.getenv(
+            "AUDIO_SILENCE_THRESHOLD_DB",
+            "-60.0"
+        )
+    )
+
     FREE_CREDITS: int = int(
         os.getenv(
             "FREE_CREDITS",
