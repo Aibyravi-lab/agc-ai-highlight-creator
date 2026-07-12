@@ -1,3 +1,9 @@
+import type {
+  HighlightItem,
+  ExtendedPipelineResult,
+  PipelineJob,
+} from "../types/pipeline";
+
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL?.trim() || "";
 
@@ -73,7 +79,7 @@ function mapJobStatus(backendStatus: string): FrontendJobStatus {
   return statusMap[backendStatus] || ("queued" as FrontendJobStatus);
 }
 
-function mapHighlight(backendHighlight: any) {
+export function mapHighlight(backendHighlight: any): HighlightItem {
   return {
     timestamp: backendHighlight.timestamp,
     duration: backendHighlight.duration,
@@ -81,10 +87,11 @@ function mapHighlight(backendHighlight: any) {
     action: backendHighlight.action,
     label: backendHighlight.category,
     clip_path: backendHighlight.clip_path,
+    explanation: backendHighlight.explanation,
   };
 }
 
-function mapResult(backendResult: any) {
+function mapResult(backendResult: any): ExtendedPipelineResult | null {
   if (!backendResult) return null;
 
   return {
@@ -101,7 +108,7 @@ function mapResult(backendResult: any) {
   };
 }
 
-function mapJob(backendJob: any) {
+export function mapJob(backendJob: any): PipelineJob {
   return {
     job_id: backendJob.job_id,
     status: mapJobStatus(backendJob.status),
