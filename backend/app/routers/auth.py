@@ -133,6 +133,7 @@ def register(
             "created_at": user["created_at"],
             "credits_remaining": user["credits_remaining"],
             "email_verified": user["email_verified"],
+            "is_admin": user["is_admin"],
         }
     }
 
@@ -204,6 +205,7 @@ def login(
             "last_login": user["last_login"],
             "credits_remaining": user["credits_remaining"],
             "email_verified": user["email_verified"],
+            "is_admin": bool(user["is_admin"]),
         }
     }
 
@@ -223,6 +225,7 @@ def me(
             "last_login": current_user["last_login"],
             "credits_remaining": current_user["credits_remaining"],
             "email_verified": current_user["email_verified"],
+            "is_admin": bool(current_user["is_admin"]),
         }
     }
 

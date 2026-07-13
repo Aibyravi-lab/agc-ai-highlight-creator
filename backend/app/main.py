@@ -29,6 +29,7 @@ from app.routers.observability import router as observability_router
 from app.routers.feedback import router as feedback_router
 from app.routers.subscription import router as subscription_router
 from app.routers.payments import router as payments_router
+from app.routers.mission_control import router as mission_control_router
 
 load_dotenv()
 
@@ -137,6 +138,7 @@ app.include_router(projects_router)
 app.include_router(feedback_router)
 app.include_router(subscription_router)
 app.include_router(payments_router)
+app.include_router(mission_control_router)
 
 @app.on_event("shutdown")
 def on_shutdown():

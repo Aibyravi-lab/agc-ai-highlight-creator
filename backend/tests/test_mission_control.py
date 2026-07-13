@@ -1,0 +1,325 @@
+"""VED-085: Mission Control founder dashboard.
+
+Covers three layers:
+  - require_admin rejects non-admin users and allows admins (dependency unit test)
+  - GET /admin/mission-control/summary is gated end-to-end through the router
+  - MissionControlService aggregate queries and deterministic blocker rules
+    produce correct results against fixture data in an isolated DB
+"""
+
+import tempfile
+import unittest
+from datetime import datetime, timedelta
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
+from fastapi.testclient import TestClient
+
+from app.dependencies import get_current_user, require_admin
+from app.routers import mission_control as mission_control_router_module
+from app.services.database_service import DatabaseService
+from app.services.mission_control_service import MissionControlService
+from app.services.subscription_service import (
+    SubscriptionPlan,
+    SubscriptionStatus,
+    SubscriptionService,
+)
+
+
+def _make_isolated_db():
+    tmp_dir = tempfile.TemporaryDirectory()
+    DatabaseService.DB_DIR = Path(tmp_dir.name)
+    DatabaseService.DB_PATH = Path(tmp_dir.name) / "test_agc.db"
+    DatabaseService.initialize()
+    return tmp_dir
+
+
+def _create_user(email: str, is_admin: bool = False, credits_remaining=None) -> int:
+    connection = DatabaseService.get_connection()
+    cursor = connection.cursor()
+    now = datetime.utcnow().isoformat()
+
+    cursor.execute(
+        "INSERT INTO users (name, email, password_hash, created_at) VALUES (?, ?, ?, ?)",
+        ("Test User", email, "hash", now),
+    )
+    user_id = cursor.lastrowid
+    connection.commit()
+    connection.close()
+
+    SubscriptionService.create_default_subscription(user_id)
+
+    if is_admin or credits_remaining is not None:
+        connection = DatabaseService.get_connection()
+        cursor = connection.cursor()
+        if is_admin:
+            cursor.execute("UPDATE users SET is_admin = 1 WHERE id = ?", (user_id,))
+        if credits_remaining is not None:
+            cursor.execute(
+                "UPDATE users SET credits_remaining = ? WHERE id = ?",
+                (credits_remaining, user_id),
+            )
+        connection.commit()
+        connection.close()
+
+    return user_id
+
+
+def _insert_job(user_id: int, status: str) -> None:
+    connection = DatabaseService.get_connection()
+    cursor = connection.cursor()
+    now = datetime.utcnow().isoformat()
+    cursor.execute(
+        """
+        INSERT INTO jobs (job_id, user_id, status, progress, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (f"job-{user_id}-{status}-{now}", user_id, status, 0, now),
+    )
+    connection.commit()
+    connection.close()
+
+
+def _insert_feedback(user_id: int) -> None:
+    connection = DatabaseService.get_connection()
+    cursor = connection.cursor()
+    now = datetime.utcnow().isoformat()
+    cursor.execute(
+        """
+        INSERT INTO feedback (user_id, project_id, rating, thumbs, comment, created_at)
+        VALUES (?, NULL, 5, 'up', 'great', ?)
+        """,
+        (user_id, now),
+    )
+    connection.commit()
+    connection.close()
+
+
+def _insert_payment(user_id: int) -> None:
+    connection = DatabaseService.get_connection()
+    cursor = connection.cursor()
+    now = datetime.utcnow().isoformat()
+    cursor.execute(
+        """
+        INSERT INTO payments (
+            user_id, razorpay_order_id, razorpay_payment_id,
+            plan, status, created_at, processed_at
+        )
+        VALUES (?, ?, ?, 'pro', 'PROCESSED', ?, ?)
+        """,
+        (user_id, f"order-{user_id}", f"pay-{user_id}", now, now),
+    )
+    connection.commit()
+    connection.close()
+
+
+class RequireAdminDependencyTests(unittest.TestCase):
+
+    def test_rejects_non_admin_user(self):
+        with self.assertRaises(HTTPException) as ctx:
+            require_admin(current_user={"id": 1, "is_admin": 0})
+
+        self.assertEqual(ctx.exception.status_code, 403)
+
+    def test_rejects_missing_is_admin_field(self):
+        with self.assertRaises(HTTPException) as ctx:
+            require_admin(current_user={"id": 1})
+
+        self.assertEqual(ctx.exception.status_code, 403)
+
+    def test_allows_admin_user(self):
+        user = {"id": 1, "is_admin": 1}
+        self.assertEqual(require_admin(current_user=user), user)
+
+
+class MissionControlEndpointTests(unittest.TestCase):
+
+    def setUp(self):
+        self._tmp_dir = _make_isolated_db()
+        self.app = FastAPI()
+        self.app.include_router(mission_control_router_module.router)
+        self.client = TestClient(self.app)
+
+    def tearDown(self):
+        self._tmp_dir.cleanup()
+
+    def test_non_admin_gets_403(self):
+        self.app.dependency_overrides[get_current_user] = lambda: {
+            "id": 1,
+            "is_admin": 0,
+        }
+
+        response = self.client.get("/admin/mission-control/summary")
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_admin_gets_200_with_expected_sections(self):
+        self.app.dependency_overrides[get_current_user] = lambda: {
+            "id": 1,
+            "is_admin": 1,
+        }
+
+        response = self.client.get("/admin/mission-control/summary")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(
+            set(body.keys()),
+            {
+                "production_health",
+                "live_metrics",
+                "distribution",
+                "capability_registry",
+                "blockers",
+                "release",
+            },
+        )
+
+    def test_unauthenticated_request_is_rejected(self):
+        # No dependency override: falls through to the real get_current_user,
+        # which requires a bearer token.
+        response = self.client.get("/admin/mission-control/summary")
+
+        self.assertEqual(response.status_code, 401)
+
+
+class MissionControlServiceMetricsTests(unittest.TestCase):
+
+    def setUp(self):
+        self._tmp_dir = _make_isolated_db()
+
+    def tearDown(self):
+        self._tmp_dir.cleanup()
+
+    def test_live_metrics_counts(self):
+        u1 = _create_user("u1@test.com")
+        u2 = _create_user("u2@test.com")
+        _create_user("u3@test.com")
+
+        connection = DatabaseService.get_connection()
+        cursor = connection.cursor()
+        cursor.execute("UPDATE users SET email_verified = 1 WHERE id = ?", (u1,))
+        connection.commit()
+        connection.close()
+
+        _insert_job(u1, "completed")
+        _insert_job(u1, "completed")
+        _insert_job(u2, "failed")
+
+        _insert_feedback(u1)
+        _insert_payment(u1)
+
+        SubscriptionService.upgrade_to_pro(u2)
+
+        metrics = MissionControlService._get_live_metrics()
+
+        self.assertEqual(metrics["total_users"], 3)
+        self.assertEqual(metrics["verified_users"], 1)
+        self.assertEqual(metrics["users_with_jobs"], 2)
+        self.assertEqual(metrics["users_with_completed_jobs"], 1)
+        self.assertEqual(metrics["repeat_users"], 1)
+        self.assertEqual(metrics["total_jobs"], 3)
+        self.assertEqual(metrics["completed_jobs"], 2)
+        self.assertEqual(metrics["failed_jobs"], 1)
+        self.assertEqual(metrics["active_pro_users"], 1)
+        self.assertEqual(metrics["processed_payments"], 1)
+        self.assertEqual(metrics["distinct_feedback_users"], 1)
+
+    def test_expired_pro_is_not_counted_active(self):
+        user_id = _create_user("expired@test.com")
+        past = (datetime.utcnow() - timedelta(days=1)).isoformat()
+
+        connection = DatabaseService.get_connection()
+        cursor = connection.cursor()
+        cursor.execute(
+            "UPDATE subscriptions SET plan = ?, status = ?, expires_at = ? WHERE user_id = ?",
+            (SubscriptionPlan.PRO, SubscriptionStatus.ACTIVE, past, user_id),
+        )
+        connection.commit()
+        connection.close()
+
+        metrics = MissionControlService._get_live_metrics()
+
+        self.assertEqual(metrics["active_pro_users"], 0)
+
+    def test_distribution_credit_and_job_buckets(self):
+        u1 = _create_user("a@test.com", credits_remaining=0)
+        u2 = _create_user("b@test.com", credits_remaining=1)
+        u3 = _create_user("c@test.com", credits_remaining=3)
+
+        for _ in range(6):
+            _insert_job(u3, "completed")
+        _insert_job(u2, "completed")
+        _insert_job(u2, "completed")
+        _insert_job(u1, "completed")
+
+        distribution = MissionControlService._get_distribution()
+
+        self.assertEqual(distribution["credit_breakdown"]["exhausted"], 1)
+        self.assertEqual(distribution["credit_breakdown"]["low"], 1)
+        self.assertEqual(distribution["credit_breakdown"]["healthy"], 1)
+
+        self.assertEqual(distribution["jobs_per_user"]["1"], 1)
+        self.assertEqual(distribution["jobs_per_user"]["2-3"], 1)
+        self.assertEqual(distribution["jobs_per_user"]["4-5"], 0)
+        self.assertEqual(distribution["jobs_per_user"]["6+"], 1)
+
+
+class MissionControlBlockerTests(unittest.TestCase):
+
+    def setUp(self):
+        self._tmp_dir = _make_isolated_db()
+
+    def tearDown(self):
+        self._tmp_dir.cleanup()
+
+    def test_zero_feedback_and_zero_payments_blockers_fire_on_empty_db(self):
+        summary = MissionControlService.get_summary()
+
+        blocker_ids = {b["id"] for b in summary["blockers"]}
+        self.assertIn("zero_feedback_users", blocker_ids)
+        self.assertIn("no_processed_payments", blocker_ids)
+
+    def test_elevated_failed_job_rate_blocker(self):
+        user_id = _create_user("failrate@test.com")
+
+        _insert_job(user_id, "completed")
+        for _ in range(4):
+            _insert_job(user_id, "failed")
+
+        summary = MissionControlService.get_summary()
+
+        blocker_ids = {b["id"] for b in summary["blockers"]}
+        self.assertIn("elevated_failed_job_rate", blocker_ids)
+
+    def test_low_failed_job_rate_does_not_trigger_blocker(self):
+        user_id = _create_user("healthyrate@test.com")
+
+        for _ in range(9):
+            _insert_job(user_id, "completed")
+        _insert_job(user_id, "failed")
+
+        summary = MissionControlService.get_summary()
+
+        blocker_ids = {b["id"] for b in summary["blockers"]}
+        self.assertNotIn("elevated_failed_job_rate", blocker_ids)
+
+    def test_users_exhausting_credits_blocker(self):
+        _create_user("exhausted@test.com", credits_remaining=0)
+
+        summary = MissionControlService.get_summary()
+
+        blocker_ids = {b["id"] for b in summary["blockers"]}
+        self.assertIn("users_exhausting_credits", blocker_ids)
+
+    def test_no_sensitive_fields_in_summary(self):
+        _create_user("secret@test.com")
+        summary = MissionControlService.get_summary()
+
+        serialized = str(summary).lower()
+        for forbidden in ("password", "token", "secret", "api_key", "razorpay_key"):
+            self.assertNotIn(forbidden, serialized)
+
+
+if __name__ == "__main__":
+    unittest.main()

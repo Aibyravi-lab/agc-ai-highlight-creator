@@ -144,6 +144,20 @@ class DatabaseService:
             if "duplicate column name" not in str(exc).lower():
                 raise
 
+        # VED-085: founder/admin flag for the Mission Control dashboard.
+        # No existing role concept predates this, so every pre-existing
+        # user backfills to 0 (non-admin); the founder account is granted
+        # admin access out-of-band via backend/scripts/grant_admin.py.
+        try:
+            cursor.execute(
+                "ALTER TABLE users ADD COLUMN is_admin "
+                "INTEGER NOT NULL DEFAULT 0"
+            )
+            connection.commit()
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc).lower():
+                raise
+
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS history (

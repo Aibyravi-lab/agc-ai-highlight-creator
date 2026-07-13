@@ -142,6 +142,7 @@ class AuthService:
             "created_at": created_at,
             "credits_remaining": settings.FREE_CREDITS,
             "email_verified": False,
+            "is_admin": False,
         }
 
     @classmethod
@@ -178,7 +179,8 @@ class AuthService:
                 created_at,
                 last_login,
                 credits_remaining,
-                email_verified
+                email_verified,
+                is_admin
             FROM users
             WHERE LOWER(email) = ?
             """,
@@ -219,7 +221,8 @@ class AuthService:
                 created_at,
                 last_login,
                 credits_remaining,
-                email_verified
+                email_verified,
+                is_admin
             FROM users
             WHERE id = ?
             """,

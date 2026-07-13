@@ -8,6 +8,7 @@ export interface AuthUser {
   last_login?: string;
   credits_remaining: number;
   email_verified: boolean;
+  is_admin: boolean;
 }
 
 export interface AuthResult {
