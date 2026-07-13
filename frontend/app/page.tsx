@@ -27,6 +27,7 @@ export default function LandingPage() {
     <div className="min-h-screen bg-[#08090d] text-white">
       <Nav />
       <Hero />
+      <ProofSection />
       <DemoSection />
       <ProductShowcase />
       <BeforeAfter />
@@ -287,6 +288,77 @@ function TrustBadges() {
         </span>
       ))}
     </div>
+  );
+}
+
+// ─── Proof ────────────────────────────────────────────────────────────────────
+
+function ProofSection() {
+  const steps = [
+    { icon: <IconFilm />, label: "RAW GAMEPLAY" },
+    { icon: <IconServer />, label: "AI ANALYSIS" },
+    { icon: <IconStar />, label: "HIGHLIGHT FOUND" },
+  ];
+
+  return (
+    <section className="max-w-6xl mx-auto px-6 pb-16 md:pb-20">
+      <div className="bg-[#0d0e14] border border-[#1a1d2e] rounded-2xl px-6 py-10 md:px-12 md:py-12 text-center">
+        <h2 className="text-2xl md:text-3xl font-bold mb-3">SEE VEDZOVI IN ACTION</h2>
+        <p className="text-gray-400 text-sm md:text-base mb-10">
+          Real gameplay. Real AI analysis. No manual timestamps.
+        </p>
+
+        <div className="flex flex-col md:flex-row items-center justify-center gap-2 md:gap-6 mb-10">
+          {steps.map((step, idx) => (
+            <div key={step.label} className="flex flex-col md:flex-row items-center gap-2 md:gap-6">
+              {idx > 0 && (
+                <>
+                  <div className="md:hidden flex flex-col items-center py-1">
+                    <div className="w-px h-4 bg-[#1a1d2e]" />
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="w-3 h-3 text-[#2a2d3e]"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="hidden md:block w-5 h-5 text-green-600 flex-shrink-0"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 18l6-6-6-6" />
+                  </svg>
+                </>
+              )}
+              <div className="flex flex-col items-center text-center">
+                <div className="w-14 h-14 bg-green-500/10 border border-green-500/20 rounded-full flex items-center justify-center text-green-400 mb-2">
+                  {step.icon}
+                </div>
+                <span className="text-xs font-semibold text-gray-300 tracking-wide whitespace-nowrap">
+                  {step.label}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <Link
+          href="/register"
+          className="inline-flex items-center gap-2 bg-green-500/10 border border-green-500/20 hover:border-green-500/40 rounded-full px-5 py-2.5 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-300"
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+          <span className="text-sm text-green-400 font-medium">
+            Try 3 AI highlights free · No card required
+          </span>
+        </Link>
+      </div>
+    </section>
   );
 }
 
