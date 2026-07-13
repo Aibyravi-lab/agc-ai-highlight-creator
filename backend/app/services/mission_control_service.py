@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from app.config.config import settings
@@ -85,6 +85,18 @@ CAPABILITY_REGISTRY: list[dict] = [
     },
 ]
 
+# VED-086: static integration-readiness registry for the Social Pulse
+# section. Not DB-backed and not wired to any external API — flipping a
+# platform's status to "connected" (and adding real fields like followers
+# or last_synced_at) is the intended VED-087 Social Intelligence Hub
+# integration point, behind this same summary key.
+SOCIAL_INTEGRATIONS: list[dict] = [
+    {"platform": "Instagram", "status": "not_connected"},
+    {"platform": "YouTube", "status": "not_connected"},
+    {"platform": "LinkedIn", "status": "not_connected"},
+    {"platform": "X", "status": "not_connected"},
+]
+
 
 class MissionControlService:
 
@@ -111,6 +123,8 @@ class MissionControlService:
             "capability_registry": CAPABILITY_REGISTRY,
             "blockers": cls._get_blockers(metrics, distribution, maintenance_on),
             "release": release,
+            "weekly_activity": cls._get_weekly_activity(),
+            "social_integrations": SOCIAL_INTEGRATIONS,
         }
 
     @classmethod
@@ -272,6 +286,46 @@ class MissionControlService:
             },
             "jobs_per_user": jobs_per_user_buckets,
         }
+
+    @classmethod
+    def _get_weekly_activity(cls) -> list[dict]:
+        # VED-086: jobs.created_at is stored as a naive UTC ISO string
+        # everywhere in this schema (no per-user/server timezone is ever
+        # recorded), so "day" here means UTC calendar day — the only
+        # grouping that's unambiguous given the data we actually have.
+
+        connection = DatabaseService.get_connection()
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                date(created_at) AS day,
+                COUNT(*) AS total,
+                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed,
+                SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed
+            FROM jobs
+            WHERE created_at IS NOT NULL
+              AND date(created_at) >= date('now', '-6 days')
+              AND date(created_at) <= date('now')
+            GROUP BY day
+            """
+        )
+        rows_by_day = {
+            day: {"total": total, "completed": completed, "failed": failed}
+            for day, total, completed, failed in cursor.fetchall()
+        }
+
+        connection.close()
+
+        today = datetime.now(timezone.utc).date()
+        return [
+            {
+                "date": day.isoformat(),
+                **rows_by_day.get(day.isoformat(), {"total": 0, "completed": 0, "failed": 0}),
+            }
+            for day in (today - timedelta(days=offset) for offset in range(6, -1, -1))
+        ]
 
     @classmethod
     def _get_blockers(

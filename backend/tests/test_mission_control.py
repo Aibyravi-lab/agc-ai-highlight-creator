@@ -11,6 +11,7 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
@@ -65,16 +66,16 @@ def _create_user(email: str, is_admin: bool = False, credits_remaining=None) -> 
     return user_id
 
 
-def _insert_job(user_id: int, status: str) -> None:
+def _insert_job(user_id: int, status: str, created_at: str = None) -> None:
     connection = DatabaseService.get_connection()
     cursor = connection.cursor()
-    now = datetime.utcnow().isoformat()
+    now = created_at or datetime.utcnow().isoformat()
     cursor.execute(
         """
         INSERT INTO jobs (job_id, user_id, status, progress, created_at)
         VALUES (?, ?, ?, ?, ?)
         """,
-        (f"job-{user_id}-{status}-{now}", user_id, status, 0, now),
+        (f"job-{user_id}-{status}-{uuid4().hex}", user_id, status, 0, now),
     )
     connection.commit()
     connection.close()
@@ -172,6 +173,8 @@ class MissionControlEndpointTests(unittest.TestCase):
                 "capability_registry",
                 "blockers",
                 "release",
+                "weekly_activity",
+                "social_integrations",
             },
         )
 
@@ -319,6 +322,93 @@ class MissionControlBlockerTests(unittest.TestCase):
         serialized = str(summary).lower()
         for forbidden in ("password", "token", "secret", "api_key", "razorpay_key"):
             self.assertNotIn(forbidden, serialized)
+
+
+class MissionControlWeeklyActivityTests(unittest.TestCase):
+
+    def setUp(self):
+        self._tmp_dir = _make_isolated_db()
+
+    def tearDown(self):
+        self._tmp_dir.cleanup()
+
+    def test_returns_seven_zero_filled_days_in_chronological_order(self):
+        activity = MissionControlService._get_weekly_activity()
+
+        self.assertEqual(len(activity), 7)
+
+        today = datetime.utcnow().date()
+        expected_dates = [
+            (today - timedelta(days=offset)).isoformat() for offset in range(6, -1, -1)
+        ]
+        self.assertEqual([day["date"] for day in activity], expected_dates)
+
+        for day in activity:
+            self.assertEqual(day["total"], 0)
+            self.assertEqual(day["completed"], 0)
+            self.assertEqual(day["failed"], 0)
+
+    def test_buckets_jobs_by_utc_calendar_day_with_status_breakdown(self):
+        user_id = _create_user("activity@test.com")
+        today = datetime.utcnow().date()
+        two_days_ago = (datetime.utcnow() - timedelta(days=2)).isoformat()
+        eight_days_ago = (datetime.utcnow() - timedelta(days=8)).isoformat()
+
+        _insert_job(user_id, "completed", created_at=today.isoformat() + "T10:00:00")
+        _insert_job(user_id, "failed", created_at=today.isoformat() + "T11:00:00")
+        _insert_job(user_id, "completed", created_at=two_days_ago)
+        # Outside the 7-day window — must not be counted anywhere.
+        _insert_job(user_id, "completed", created_at=eight_days_ago)
+
+        activity = MissionControlService._get_weekly_activity()
+        by_date = {day["date"]: day for day in activity}
+
+        self.assertEqual(by_date[today.isoformat()]["total"], 2)
+        self.assertEqual(by_date[today.isoformat()]["completed"], 1)
+        self.assertEqual(by_date[today.isoformat()]["failed"], 1)
+
+        two_days_ago_key = (today - timedelta(days=2)).isoformat()
+        self.assertEqual(by_date[two_days_ago_key]["total"], 1)
+        self.assertEqual(by_date[two_days_ago_key]["completed"], 1)
+
+        total_across_window = sum(day["total"] for day in activity)
+        self.assertEqual(total_across_window, 3)
+
+    def test_future_dated_jobs_are_excluded_from_the_window(self):
+        # VED-086 CTO audit: a job whose created_at is ahead of the server's
+        # own "now" (clock skew, bad test fixture, corrupted data) must not
+        # be counted in any of the 7 buckets — including today's.
+        user_id = _create_user("future@test.com")
+        three_days_ahead = (datetime.utcnow() + timedelta(days=3)).isoformat()
+
+        _insert_job(user_id, "completed", created_at=three_days_ahead)
+
+        activity = MissionControlService._get_weekly_activity()
+
+        self.assertEqual(len(activity), 7)
+        total_across_window = sum(day["total"] for day in activity)
+        self.assertEqual(total_across_window, 0)
+
+
+class MissionControlSocialIntegrationsTests(unittest.TestCase):
+
+    def setUp(self):
+        self._tmp_dir = _make_isolated_db()
+
+    def tearDown(self):
+        self._tmp_dir.cleanup()
+
+    def test_returns_expected_platforms_all_not_connected(self):
+        summary = MissionControlService.get_summary()
+        integrations = summary["social_integrations"]
+
+        self.assertEqual(
+            {i["platform"] for i in integrations},
+            {"Instagram", "YouTube", "LinkedIn", "X"},
+        )
+        for integration in integrations:
+            self.assertEqual(integration["status"], "not_connected")
+            self.assertEqual(set(integration.keys()), {"platform", "status"})
 
 
 if __name__ == "__main__":

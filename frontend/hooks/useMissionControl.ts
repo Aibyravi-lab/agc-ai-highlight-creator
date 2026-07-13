@@ -10,6 +10,7 @@ export function useMissionControl() {
   const [summary, setSummary] = useState<MissionControlSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -20,6 +21,7 @@ export function useMissionControl() {
         if (!cancelled) {
           setSummary(next);
           setError(null);
+          setLastUpdatedAt(Date.now());
         }
       } catch (err) {
         if (!cancelled) {
@@ -39,5 +41,5 @@ export function useMissionControl() {
     };
   }, []);
 
-  return { summary, loading, error };
+  return { summary, loading, error, lastUpdatedAt };
 }

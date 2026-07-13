@@ -65,6 +65,18 @@ export interface ReleaseInfo {
   };
 }
 
+export interface DailyActivity {
+  date: string;
+  total: number;
+  completed: number;
+  failed: number;
+}
+
+export interface SocialIntegration {
+  platform: string;
+  status: "not_connected" | "connected";
+}
+
 export interface MissionControlSummary {
   production_health: ProductionHealth;
   live_metrics: LiveMetrics;
@@ -72,4 +84,6 @@ export interface MissionControlSummary {
   capability_registry: CapabilityCategory[];
   blockers: Blocker[];
   release: ReleaseInfo;
+  weekly_activity: DailyActivity[];
+  social_integrations: SocialIntegration[];
 }

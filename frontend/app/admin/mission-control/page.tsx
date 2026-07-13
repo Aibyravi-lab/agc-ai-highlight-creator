@@ -29,18 +29,11 @@ export default function MissionControlPage() {
 }
 
 function MissionControlContent() {
-  const { summary, loading, error } = useMissionControl();
+  const { summary, loading, error, lastUpdatedAt } = useMissionControl();
 
   return (
     <main className="min-h-screen bg-[#08090d] text-white">
-      <div className="max-w-7xl mx-auto px-6 py-10 space-y-8">
-        <div className="pb-2 border-b border-[#1a1d2e]">
-          <div className="flex items-baseline gap-3">
-            <h1 className="text-2xl font-bold tracking-tight">Mission Control</h1>
-            <span className="text-gray-500 text-sm">Founder Operating System</span>
-          </div>
-        </div>
-
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-10 space-y-8">
         {error && (
           <div className="rounded-xl border border-red-500/25 bg-red-500/5 p-4">
             <p className="text-sm text-red-300">{error}</p>
@@ -48,12 +41,12 @@ function MissionControlContent() {
         )}
 
         {loading && !summary ? (
-          <div className="flex items-center gap-3 text-gray-500 text-sm">
+          <div className="min-h-[50vh] flex items-center justify-center gap-3 text-gray-500 text-sm">
             <div className="w-4 h-4 rounded-full border-2 border-green-500 border-t-transparent animate-spin" />
             Loading dashboard data...
           </div>
         ) : summary ? (
-          <MissionControlDashboard summary={summary} />
+          <MissionControlDashboard summary={summary} lastUpdatedAt={lastUpdatedAt} />
         ) : null}
       </div>
     </main>
