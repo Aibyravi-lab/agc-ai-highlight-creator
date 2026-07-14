@@ -64,12 +64,12 @@ function buildSignals(
     });
   }
 
-  if (metrics.failed_jobs > 0) {
+  if (metrics.external_failed_jobs > 0) {
     signals.push({
       id: "failed_jobs",
       icon: <IconAlertTriangle className="w-4 h-4" />,
       tone: "red",
-      message: `${metrics.failed_jobs} job${metrics.failed_jobs === 1 ? "" : "s"} have failed.`,
+      message: `${metrics.external_failed_jobs} job${metrics.external_failed_jobs === 1 ? "" : "s"} have failed.`,
     });
   }
 

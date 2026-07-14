@@ -44,8 +44,11 @@ function HeroCard({
 }
 
 export function HeroMetrics({ metrics }: { metrics: LiveMetrics }) {
+  // GROW-005.2: these cards present job activity as user traction, so they
+  // use the external-only job counts rather than total_jobs/completed_jobs
+  // (which include internal/test jobs and stay reserved for operational use).
   const verifiedRate = ratio(metrics.verified_users, metrics.total_users);
-  const completionRate = ratio(metrics.completed_jobs, metrics.total_jobs);
+  const completionRate = ratio(metrics.external_completed_jobs, metrics.external_total_jobs);
   const repeatRate = ratio(metrics.repeat_users, metrics.users_with_jobs);
   const proRate = ratio(metrics.active_pro_users, metrics.total_users);
 
@@ -55,7 +58,7 @@ export function HeroMetrics({ metrics }: { metrics: LiveMetrics }) {
         <HeroCard
           icon={<IconUsers />}
           tone="green"
-          label="Total Users"
+          label="External Users"
           value={metrics.total_users}
           secondary={verifiedRate ? `${metrics.verified_users}/${metrics.total_users} verified · ${verifiedRate}` : null}
         />
@@ -63,14 +66,14 @@ export function HeroMetrics({ metrics }: { metrics: LiveMetrics }) {
           icon={<IconActivity />}
           tone="cyan"
           label="AI Runs"
-          value={metrics.total_jobs}
+          value={metrics.external_total_jobs}
           secondary={`${metrics.users_with_jobs} creators tried it`}
         />
         <HeroCard
           icon={<IconFilm />}
           tone="green"
           label="Highlights Completed"
-          value={metrics.completed_jobs}
+          value={metrics.external_completed_jobs}
           secondary={completionRate ? `${completionRate} completion rate` : null}
         />
         <HeroCard

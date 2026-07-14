@@ -143,6 +143,7 @@ class AuthService:
             "credits_remaining": settings.FREE_CREDITS,
             "email_verified": False,
             "is_admin": False,
+            "is_internal": False,
         }
 
     @classmethod
@@ -180,7 +181,8 @@ class AuthService:
                 last_login,
                 credits_remaining,
                 email_verified,
-                is_admin
+                is_admin,
+                is_internal
             FROM users
             WHERE LOWER(email) = ?
             """,
@@ -222,7 +224,8 @@ class AuthService:
                 last_login,
                 credits_remaining,
                 email_verified,
-                is_admin
+                is_admin,
+                is_internal
             FROM users
             WHERE id = ?
             """,

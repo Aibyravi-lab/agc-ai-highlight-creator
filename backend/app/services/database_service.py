@@ -158,6 +158,25 @@ class DatabaseService:
             if "duplicate column name" not in str(exc).lower():
                 raise
 
+        # GROW-005.2: marks a user's account (and, by extension, every job/
+        # feedback/payment row attributed to it) as internal/test activity
+        # so Mission Control growth analytics can exclude it. Deliberately
+        # separate from is_admin — that flag governs dashboard access, not
+        # whether an account represents real external traction — so every
+        # pre-existing user backfills to 0 (external) with no automatic
+        # heuristic classification, including existing admins. Known
+        # founder/test accounts are classified out-of-band via
+        # backend/scripts/mark_internal.py.
+        try:
+            cursor.execute(
+                "ALTER TABLE users ADD COLUMN is_internal "
+                "INTEGER NOT NULL DEFAULT 0"
+            )
+            connection.commit()
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc).lower():
+                raise
+
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS history (

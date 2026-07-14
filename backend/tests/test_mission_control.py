@@ -35,7 +35,12 @@ def _make_isolated_db():
     return tmp_dir
 
 
-def _create_user(email: str, is_admin: bool = False, credits_remaining=None) -> int:
+def _create_user(
+    email: str,
+    is_admin: bool = False,
+    credits_remaining=None,
+    is_internal: bool = False,
+) -> int:
     connection = DatabaseService.get_connection()
     cursor = connection.cursor()
     now = datetime.utcnow().isoformat()
@@ -50,11 +55,13 @@ def _create_user(email: str, is_admin: bool = False, credits_remaining=None) -> 
 
     SubscriptionService.create_default_subscription(user_id)
 
-    if is_admin or credits_remaining is not None:
+    if is_admin or is_internal or credits_remaining is not None:
         connection = DatabaseService.get_connection()
         cursor = connection.cursor()
         if is_admin:
             cursor.execute("UPDATE users SET is_admin = 1 WHERE id = ?", (user_id,))
+        if is_internal:
+            cursor.execute("UPDATE users SET is_internal = 1 WHERE id = ?", (user_id,))
         if credits_remaining is not None:
             cursor.execute(
                 "UPDATE users SET credits_remaining = ? WHERE id = ?",
@@ -193,6 +200,7 @@ class MissionControlEndpointTests(unittest.TestCase):
                 "weekly_activity",
                 "social_integrations",
                 "feedback_summary",
+                "segmentation",
             },
         )
 
@@ -518,6 +526,259 @@ class MissionControlSocialIntegrationsTests(unittest.TestCase):
         for integration in integrations:
             self.assertEqual(integration["status"], "not_connected")
             self.assertEqual(set(integration.keys()), {"platform", "status"})
+
+
+class MissionControlSegmentationTests(unittest.TestCase):
+    """GROW-005.2: internal/test users must never inflate growth analytics,
+    while still counting toward operational job/failure totals."""
+
+    def setUp(self):
+        self._tmp_dir = _make_isolated_db()
+
+    def tearDown(self):
+        self._tmp_dir.cleanup()
+
+    def test_internal_user_excluded_external_user_included_in_live_metrics(self):
+        external_user = _create_user("real-creator@test.com")
+        internal_user = _create_user("founder-test@test.com", is_internal=True)
+
+        connection = DatabaseService.get_connection()
+        cursor = connection.cursor()
+        cursor.execute(
+            "UPDATE users SET email_verified = 1 WHERE id IN (?, ?)",
+            (external_user, internal_user),
+        )
+        connection.commit()
+        connection.close()
+
+        metrics = MissionControlService._get_live_metrics()
+
+        self.assertEqual(metrics["total_users"], 1)
+        self.assertEqual(metrics["internal_users"], 1)
+        self.assertEqual(metrics["verified_users"], 1)
+
+    def test_internal_jobs_excluded_from_growth_job_counts(self):
+        external_user = _create_user("real-creator@test.com")
+        internal_user = _create_user("founder-test@test.com", is_internal=True)
+
+        _insert_job(external_user, "completed")
+        _insert_job(external_user, "failed")
+        _insert_job(internal_user, "completed")
+        _insert_job(internal_user, "failed")
+
+        metrics = MissionControlService._get_live_metrics()
+
+        # Growth-facing counts only reflect the external user's jobs.
+        self.assertEqual(metrics["external_total_jobs"], 2)
+        self.assertEqual(metrics["external_completed_jobs"], 1)
+        self.assertEqual(metrics["external_failed_jobs"], 1)
+        self.assertEqual(metrics["internal_jobs"], 2)
+        self.assertEqual(metrics["users_with_jobs"], 1)
+        self.assertEqual(metrics["users_with_completed_jobs"], 1)
+
+    def test_internal_jobs_still_counted_in_operational_totals(self):
+        # A test job still consumed real server capacity, so total_jobs/
+        # completed_jobs/failed_jobs (used for infra health and the
+        # elevated_failed_job_rate blocker) must remain unfiltered.
+        external_user = _create_user("real-creator@test.com")
+        internal_user = _create_user("founder-test@test.com", is_internal=True)
+
+        _insert_job(external_user, "completed")
+        _insert_job(internal_user, "failed")
+
+        metrics = MissionControlService._get_live_metrics()
+
+        self.assertEqual(metrics["total_jobs"], 2)
+        self.assertEqual(metrics["completed_jobs"], 1)
+        self.assertEqual(metrics["failed_jobs"], 1)
+
+    def test_null_owner_job_is_not_external(self):
+        # CTO audit: a job with no resolvable owner has no deterministic
+        # proof of external ownership and must NOT be counted as external
+        # growth traction.
+        _insert_job(None, "completed")
+
+        metrics = MissionControlService._get_live_metrics()
+
+        self.assertEqual(metrics["external_total_jobs"], 0)
+
+    def test_null_owner_job_is_not_internal(self):
+        _insert_job(None, "completed")
+
+        metrics = MissionControlService._get_live_metrics()
+
+        self.assertEqual(metrics["internal_jobs"], 0)
+
+    def test_null_owner_job_is_counted_operationally(self):
+        # Still real server workload — must count toward the unfiltered
+        # operational totals even though it's excluded from both growth
+        # buckets.
+        _insert_job(None, "completed")
+
+        metrics = MissionControlService._get_live_metrics()
+
+        self.assertEqual(metrics["total_jobs"], 1)
+        self.assertEqual(metrics["completed_jobs"], 1)
+        self.assertEqual(metrics["unattributed_jobs"], 1)
+
+    def test_null_owner_completed_job_does_not_inflate_external_completed_jobs(self):
+        external_user = _create_user("ext@test.com")
+        _insert_job(external_user, "completed")
+        _insert_job(None, "completed")
+
+        metrics = MissionControlService._get_live_metrics()
+
+        self.assertEqual(metrics["external_completed_jobs"], 1)
+        self.assertEqual(metrics["completed_jobs"], 2)
+
+    def test_null_owner_failed_job_does_not_inflate_external_failed_jobs(self):
+        external_user = _create_user("ext@test.com")
+        _insert_job(external_user, "failed")
+        _insert_job(None, "failed")
+
+        metrics = MissionControlService._get_live_metrics()
+
+        self.assertEqual(metrics["external_failed_jobs"], 1)
+        self.assertEqual(metrics["failed_jobs"], 2)
+
+    def test_segmentation_job_arithmetic_is_deterministic(self):
+        external_user = _create_user("ext@test.com")
+        internal_user = _create_user("int@test.com", is_internal=True)
+        _insert_job(external_user, "completed")
+        _insert_job(internal_user, "completed")
+        _insert_job(internal_user, "failed")
+        _insert_job(None, "completed")
+        _insert_job(None, "failed")
+
+        metrics = MissionControlService._get_live_metrics()
+
+        self.assertEqual(
+            metrics["external_total_jobs"]
+            + metrics["internal_jobs"]
+            + metrics["unattributed_jobs"],
+            metrics["total_jobs"],
+        )
+        self.assertEqual(metrics["external_total_jobs"], 1)
+        self.assertEqual(metrics["internal_jobs"], 2)
+        self.assertEqual(metrics["unattributed_jobs"], 2)
+        self.assertEqual(metrics["total_jobs"], 5)
+
+    def test_distribution_excludes_internal_users_and_jobs(self):
+        external_user = _create_user("ext@test.com", credits_remaining=0)
+        internal_user = _create_user("int@test.com", credits_remaining=0, is_internal=True)
+
+        _insert_job(external_user, "completed")
+        for _ in range(5):
+            _insert_job(internal_user, "completed")
+
+        distribution = MissionControlService._get_distribution()
+
+        self.assertEqual(distribution["credit_breakdown"]["exhausted"], 1)
+        self.assertEqual(distribution["jobs_per_user"]["1"], 1)
+        self.assertEqual(distribution["jobs_per_user"]["4-5"], 0)
+
+    def test_internal_feedback_excluded_from_external_feedback_summary(self):
+        external_user = _create_user("ext@test.com")
+        internal_user = _create_user("int@test.com", is_internal=True)
+
+        _insert_feedback_with_rating(external_user, rating=4)
+        _insert_feedback_with_rating(internal_user, rating=1)
+
+        summary = MissionControlService._get_feedback_summary()
+        metrics = MissionControlService._get_live_metrics()
+
+        self.assertEqual(summary["total_responses"], 1)
+        self.assertEqual(
+            summary["rating_distribution"],
+            {"great": 1, "good": 0, "okay": 0, "bad": 0},
+        )
+        self.assertEqual(summary["positive_rate"], 100.0)
+        self.assertEqual(metrics["distinct_feedback_users"], 1)
+
+    def test_internal_only_feedback_does_not_clear_zero_feedback_blocker(self):
+        internal_user = _create_user("int@test.com", is_internal=True)
+        _insert_feedback_with_rating(internal_user, rating=4)
+
+        summary = MissionControlService.get_summary()
+
+        blocker_ids = {b["id"] for b in summary["blockers"]}
+        self.assertIn("zero_feedback_users", blocker_ids)
+
+    def test_external_feedback_clears_zero_feedback_blocker(self):
+        external_user = _create_user("ext@test.com")
+        _insert_feedback_with_rating(external_user, rating=4)
+
+        summary = MissionControlService.get_summary()
+
+        blocker_ids = {b["id"] for b in summary["blockers"]}
+        self.assertNotIn("zero_feedback_users", blocker_ids)
+
+    def test_internal_pro_subscription_excluded_from_active_pro_users_but_entitlement_unchanged(self):
+        internal_user = _create_user("int@test.com", is_internal=True)
+        SubscriptionService.upgrade_to_pro(internal_user)
+
+        metrics = MissionControlService._get_live_metrics()
+        self.assertEqual(metrics["active_pro_users"], 0)
+
+        # Payment/subscription entitlement itself is untouched by segmentation.
+        subscription = SubscriptionService.get_by_user_id(internal_user)
+        self.assertEqual(subscription["plan"], SubscriptionPlan.PRO)
+        self.assertEqual(subscription["status"], SubscriptionStatus.ACTIVE)
+
+    def test_internal_payment_excluded_from_processed_payments(self):
+        internal_user = _create_user("int@test.com", is_internal=True)
+        _insert_payment(internal_user)
+
+        metrics = MissionControlService._get_live_metrics()
+        self.assertEqual(metrics["processed_payments"], 0)
+
+    def test_segmentation_payload_counts_and_no_pii(self):
+        external_user = _create_user("ext@test.com")
+        internal_user = _create_user("int@test.com", is_internal=True)
+        _insert_job(external_user, "completed")
+        _insert_job(internal_user, "completed")
+        _insert_job(None, "completed")
+
+        summary = MissionControlService.get_summary()
+        segmentation = summary["segmentation"]
+
+        self.assertEqual(segmentation["external_users"], 1)
+        self.assertEqual(segmentation["internal_users"], 1)
+        self.assertEqual(segmentation["external_jobs"], 1)
+        self.assertEqual(segmentation["internal_jobs"], 1)
+        self.assertEqual(segmentation["unattributed_jobs"], 1)
+        self.assertEqual(
+            segmentation["external_jobs"] + segmentation["internal_jobs"] + segmentation["unattributed_jobs"],
+            summary["live_metrics"]["total_jobs"],
+        )
+
+        serialized = str(summary).lower()
+        for forbidden in ("ext@test.com", "int@test.com"):
+            self.assertNotIn(forbidden, serialized)
+
+    def test_empty_external_dataset_is_safe(self):
+        # Only internal/unattributed users/jobs/feedback exist — external
+        # metrics must be zero, not None/NaN/Infinity, and the summary call
+        # must not raise.
+        internal_user = _create_user("int@test.com", is_internal=True)
+        _insert_job(internal_user, "failed")
+        _insert_job(None, "completed")
+        _insert_feedback_with_rating(internal_user, rating=1)
+
+        summary = MissionControlService.get_summary()
+        metrics = summary["live_metrics"]
+
+        self.assertEqual(metrics["total_users"], 0)
+        self.assertEqual(metrics["external_total_jobs"], 0)
+        self.assertEqual(metrics["external_completed_jobs"], 0)
+        self.assertEqual(metrics["external_failed_jobs"], 0)
+        self.assertEqual(metrics["unattributed_jobs"], 1)
+        self.assertEqual(metrics["users_with_jobs"], 0)
+        self.assertEqual(summary["feedback_summary"]["total_responses"], 0)
+        self.assertIsNone(summary["feedback_summary"]["positive_rate"])
+        self.assertEqual(summary["distribution"]["credit_breakdown"]["exhausted"], 0)
+        self.assertEqual(summary["distribution"]["credit_breakdown"]["low"], 0)
+        self.assertEqual(summary["distribution"]["credit_breakdown"]["healthy"], 0)
 
 
 if __name__ == "__main__":

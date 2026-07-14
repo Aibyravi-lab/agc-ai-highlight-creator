@@ -10,6 +10,7 @@ import { DistributionPanel } from "./mission-control/DistributionPanel";
 import { FounderSignals } from "./mission-control/FounderSignals";
 import { HeroMetrics } from "./mission-control/HeroMetrics";
 import { OperationsStrip } from "./mission-control/OperationsStrip";
+import { SegmentationBanner } from "./mission-control/SegmentationBanner";
 import { SocialPulse } from "./mission-control/SocialPulse";
 import { UserFunnel } from "./mission-control/UserFunnel";
 
@@ -23,6 +24,7 @@ export function MissionControlDashboard({
   return (
     <div className="space-y-8">
       <CommandHeader health={summary.production_health} lastUpdatedAt={lastUpdatedAt} />
+      <SegmentationBanner segmentation={summary.segmentation} />
       <HeroMetrics metrics={summary.live_metrics} />
       <ActivityChart activity={summary.weekly_activity} />
       <UserFunnel metrics={summary.live_metrics} />
