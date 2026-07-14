@@ -91,7 +91,7 @@ export function mapHighlight(backendHighlight: any): HighlightItem {
   };
 }
 
-function mapResult(backendResult: any): ExtendedPipelineResult | null {
+export function mapResult(backendResult: any): ExtendedPipelineResult | null {
   if (!backendResult) return null;
 
   return {
@@ -105,6 +105,7 @@ function mapResult(backendResult: any): ExtendedPipelineResult | null {
     highlights_found: backendResult.highlights_found || 0,
     stats: backendResult.stats,
     all_highlights: backendResult.all_highlights?.map(mapHighlight) || [],
+    project_id: backendResult.project_id ?? null,
   };
 }
 

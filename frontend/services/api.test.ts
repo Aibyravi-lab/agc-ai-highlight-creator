@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mapHighlight, mapJob, getMaintenanceStatus, resolveMaintenanceState } from "./api.ts";
+import {
+  mapHighlight,
+  mapJob,
+  getMaintenanceStatus,
+  resolveMaintenanceState,
+  mapResult,
+} from "./api.ts";
 
 // AGC-082.1 — production regression: mapHighlight() dropped
 // backendHighlight.explanation, so highlight.explanation.reasons was
@@ -75,6 +81,29 @@ test("mapJob preserves explanation.reasons through the full backend job -> front
     mappedJob.result?.all_highlights?.[0]?.explanation?.reasons,
     backendJob.result.all_highlights[0].explanation.reasons
   );
+});
+
+// GROW-005.1 — production regression: mapResult() dropped
+// backendResult.project_id, so FeedbackCard always submitted
+// project_id: null even though pipeline_service.py registers the
+// completed job's project and surfaces it on the result.
+test("mapResult preserves project_id from the backend job result", () => {
+  const mapped = mapResult({
+    title: "Epic Racing Moment",
+    highlights_found: 1,
+    project_id: 42,
+  });
+
+  assert.equal(mapped?.project_id, 42);
+});
+
+test("mapResult falls back to null when the backend omits project_id", () => {
+  const mapped = mapResult({
+    title: "Epic Racing Moment",
+    highlights_found: 1,
+  });
+
+  assert.equal(mapped?.project_id, null);
 });
 
 // AGC-084 — maintenance mode: getMaintenanceStatus() is a thin,

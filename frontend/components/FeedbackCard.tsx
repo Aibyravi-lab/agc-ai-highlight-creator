@@ -33,6 +33,7 @@ export function FeedbackCard({ projectId, onDismiss }: FeedbackCardProps) {
   const [comment, setComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     track("feedback_prompt_viewed");
@@ -46,6 +47,7 @@ export function FeedbackCard({ projectId, onDismiss }: FeedbackCardProps) {
   const handleSubmit = async () => {
     if (submitting || rating === null) return;
     setSubmitting(true);
+    setSubmitError(null);
     try {
       await submitFeedback({
         project_id: projectId ?? null,
@@ -56,11 +58,14 @@ export function FeedbackCard({ projectId, onDismiss }: FeedbackCardProps) {
       track("feedback_submitted", { rating, improvement_area: improvementArea });
       setSubmitted(true);
       setTimeout(() => onDismiss(), 1800);
-    } catch {
-      // feedback submission is non-critical; dismiss after a brief delay
-      // rather than surfacing an error on the result page.
+    } catch (err) {
+      // The card must only reach the submitted/dismissed state on a
+      // confirmed POST /feedback success — dismissing here would hide a
+      // failed submission behind what looks like a normal skip, with no
+      // trace that feedback was lost.
+      console.error("submitFeedback failed", err);
       setSubmitting(false);
-      setTimeout(() => onDismiss(), 800);
+      setSubmitError("Couldn't send feedback. Please try again.");
     }
   };
 
@@ -152,13 +157,20 @@ export function FeedbackCard({ projectId, onDismiss }: FeedbackCardProps) {
           </div>
 
           {/* Submit */}
-          <button
-            onClick={handleSubmit}
-            disabled={submitting}
-            className="text-sm px-4 py-2 bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white rounded-lg font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-400"
-          >
-            {submitting ? "Sending…" : "Send feedback"}
-          </button>
+          <div className="space-y-2">
+            <button
+              onClick={handleSubmit}
+              disabled={submitting}
+              className="text-sm px-4 py-2 bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white rounded-lg font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-400"
+            >
+              {submitting ? "Sending…" : "Send feedback"}
+            </button>
+            {submitError && (
+              <p role="alert" className="text-xs text-red-400">
+                {submitError}
+              </p>
+            )}
+          </div>
         </div>
       )}
     </div>
