@@ -42,7 +42,7 @@ function buildSignals(
       id: "repeat_users",
       icon: <IconRepeat className="w-4 h-4" />,
       tone: "green",
-      message: `${metrics.repeat_users} creator${metrics.repeat_users === 1 ? "" : "s"} returned for another AI run.`,
+      message: `${metrics.repeat_users} creator${metrics.repeat_users === 1 ? "" : "s"} came back on a different day to run the AI again.`,
     });
   }
 

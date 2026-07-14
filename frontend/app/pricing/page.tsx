@@ -129,6 +129,13 @@ export default function PricingPage() {
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [pendingPayment, setPendingPayment] = useState<RazorpayPaymentSuccess | null>(null);
 
+  // Fires once per mount — mirrors the "Dashboard Viewed" / "Landing Page
+  // Viewed" pattern. An empty dependency array means state/prop changes
+  // from checkout progress never retrigger this.
+  useEffect(() => {
+    track("pricing_page_viewed");
+  }, []);
+
   // While auth or subscription is still resolving, we don't yet know the
   // user's plan — avoid rendering a plan-specific button prematurely.
   const isResolving = authLoading || (isAuthenticated && subscriptionLoading);
@@ -182,9 +189,14 @@ export default function PricingPage() {
     setPendingPayment(null);
     setCheckoutState("creating_order");
 
+    // Tracks which stage we're in so a caught error can be attributed to a
+    // deterministic failure_category instead of guessing from message text.
+    let stage: "order_creation_failed" | "checkout_failed" = "order_creation_failed";
+
     try {
       const order = await createPaymentOrder("pro");
 
+      stage = "checkout_failed";
       setCheckoutState("opening_checkout");
       track("Checkout Started");
       await openRazorpayCheckout(order, {
@@ -195,7 +207,7 @@ export default function PricingPage() {
         onFailure: (reason) => {
           setCheckoutError(reason);
           setCheckoutState("failed");
-          track("Payment Failed", { reason });
+          track("Payment Failed", { reason, failure_category: "checkout_failed" });
         },
       });
       // Modal is open and awaiting user action — but if the user already
@@ -206,7 +218,7 @@ export default function PricingPage() {
       const message = err instanceof Error ? err.message : "Unable to start checkout. Please try again.";
       setCheckoutError(message);
       setCheckoutState("failed");
-      track("Payment Failed", { reason: message });
+      track("Payment Failed", { reason: message, failure_category: stage });
     }
   };
 

@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { MAX_UPLOAD_SIZE_MB, MAX_VIDEO_DURATION_MINUTES } from "../utils/uploadLimits";
 import { isUploadInteractionDisabled, isGenerateDisabled } from "../utils/uploadPanelState";
+import { track } from "../services/analytics";
 
 interface UploadPanelProps {
   selectedFile: File | null;
@@ -52,6 +53,20 @@ export function UploadPanel({
   const isUploading = loading && progressStatus.toLowerCase().startsWith("uploading");
   const outOfCredits = !subscriptionLoading && !isPro && creditsRemaining <= 0;
   const disabled = isUploadInteractionDisabled({ maintenanceMode, outOfCredits });
+
+  // Fires once per exposure — the ref guard stops it from re-firing on every
+  // render while outOfCredits stays true, only resetting on unmount/remount.
+  const hasTrackedExhaustedCtaViewRef = useRef(false);
+  useEffect(() => {
+    if (outOfCredits && !hasTrackedExhaustedCtaViewRef.current) {
+      hasTrackedExhaustedCtaViewRef.current = true;
+      track("credits_exhausted_cta_viewed");
+    }
+  }, [outOfCredits]);
+
+  const handleUpgradeCtaClick = () => {
+    track("credits_exhausted_cta_clicked");
+  };
   const generateDisabled = isGenerateDisabled({
     loading,
     hasSelectedFile: Boolean(selectedFile),
@@ -211,6 +226,7 @@ export function UploadPanel({
           </p>
           <Link
             href="/pricing"
+            onClick={handleUpgradeCtaClick}
             className="mt-3 inline-block bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-colors"
           >
             Upgrade to Pro

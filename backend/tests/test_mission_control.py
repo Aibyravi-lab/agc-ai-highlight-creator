@@ -231,8 +231,10 @@ class MissionControlServiceMetricsTests(unittest.TestCase):
         connection.commit()
         connection.close()
 
-        _insert_job(u1, "completed")
-        _insert_job(u1, "completed")
+        # u1's two jobs land on distinct calendar dates so it still counts
+        # as a repeat user under the GROW-007 distinct-date definition.
+        _insert_job(u1, "completed", created_at="2026-01-01T10:00:00")
+        _insert_job(u1, "completed", created_at="2026-01-02T10:00:00")
         _insert_job(u2, "failed")
 
         _insert_feedback(u1)
@@ -779,6 +781,59 @@ class MissionControlSegmentationTests(unittest.TestCase):
         self.assertEqual(summary["distribution"]["credit_breakdown"]["exhausted"], 0)
         self.assertEqual(summary["distribution"]["credit_breakdown"]["low"], 0)
         self.assertEqual(summary["distribution"]["credit_breakdown"]["healthy"], 0)
+
+
+class MissionControlRepeatUserTests(unittest.TestCase):
+    """GROW-007: repeat_users must reflect jobs on >= 2 distinct calendar
+    dates, not raw job count — same-session retries/reruns are not
+    retention."""
+
+    def setUp(self):
+        self._tmp_dir = _make_isolated_db()
+
+    def tearDown(self):
+        self._tmp_dir.cleanup()
+
+    def test_same_calendar_date_jobs_do_not_create_a_repeat_user(self):
+        user_id = _create_user("sameday@test.com")
+        _insert_job(user_id, "completed", created_at="2026-03-01T09:00:00")
+        _insert_job(user_id, "completed", created_at="2026-03-01T18:00:00")
+        _insert_job(user_id, "completed", created_at="2026-03-01T23:59:59")
+
+        metrics = MissionControlService._get_live_metrics()
+
+        self.assertEqual(metrics["repeat_users"], 0)
+
+    def test_distinct_calendar_date_jobs_create_a_repeat_user(self):
+        user_id = _create_user("twodays@test.com")
+        _insert_job(user_id, "completed", created_at="2026-03-01T23:59:59")
+        _insert_job(user_id, "completed", created_at="2026-03-02T00:00:01")
+
+        metrics = MissionControlService._get_live_metrics()
+
+        self.assertEqual(metrics["repeat_users"], 1)
+
+    def test_internal_user_with_multi_date_jobs_excluded_from_repeat_users(self):
+        internal_user = _create_user("internal-multi@test.com", is_internal=True)
+        _insert_job(internal_user, "completed", created_at="2026-03-01T10:00:00")
+        _insert_job(internal_user, "completed", created_at="2026-03-02T10:00:00")
+
+        metrics = MissionControlService._get_live_metrics()
+
+        self.assertEqual(metrics["repeat_users"], 0)
+
+    def test_null_owner_jobs_do_not_create_a_repeat_user(self):
+        _insert_job(None, "completed", created_at="2026-03-01T10:00:00")
+        _insert_job(None, "completed", created_at="2026-03-02T10:00:00")
+
+        metrics = MissionControlService._get_live_metrics()
+
+        self.assertEqual(metrics["repeat_users"], 0)
+
+    def test_repeat_users_is_zero_on_empty_dataset(self):
+        metrics = MissionControlService._get_live_metrics()
+
+        self.assertEqual(metrics["repeat_users"], 0)
 
 
 if __name__ == "__main__":

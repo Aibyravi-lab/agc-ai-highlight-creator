@@ -203,6 +203,10 @@ class MissionControlService:
         )
         users_with_completed_jobs = cursor.fetchone()[0] or 0
 
+        # GROW-007: a repeat user is one with AI jobs on at least 2 distinct
+        # calendar dates — same-session retries/reruns on one date are not
+        # retention. This is a simple MVP return-usage signal, not a cohort
+        # retention model.
         cursor.execute(
             """
             SELECT COUNT(*) FROM (
@@ -210,7 +214,7 @@ class MissionControlService:
                 JOIN users ON users.id = jobs.user_id
                 WHERE jobs.user_id IS NOT NULL AND users.is_internal = 0
                 GROUP BY jobs.user_id
-                HAVING COUNT(*) >= 2
+                HAVING COUNT(DISTINCT date(jobs.created_at)) >= 2
             )
             """
         )

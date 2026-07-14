@@ -48,7 +48,12 @@ type AnalyticsEvent =
   // GROW-005 in-app feedback loop
   | "feedback_prompt_viewed"
   | "feedback_rating_selected"
-  | "feedback_submitted";
+  | "feedback_submitted"
+  // GROW-007 conversion funnel truth
+  | "pricing_page_viewed"
+  | "pipeline_failed"
+  | "credits_exhausted_cta_viewed"
+  | "credits_exhausted_cta_clicked";
 
 // Analytics must never break the user flow — every call is wrapped so a
 // PostHog/network failure is swallowed instead of propagating into caller code.

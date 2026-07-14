@@ -28,8 +28,12 @@ setup, same env vars, same `track()` / `identify()` / `reset()` helper in
 | `Upgrade Button Clicked` | User clicks "Upgrade to Pro" on the pricing page | `frontend/app/pricing/page.tsx` |
 | `Checkout Started` | Razorpay order created and checkout modal is opening | `frontend/app/pricing/page.tsx` |
 | `Payment Success` | Payment verified and Pro plan activated | `frontend/app/pricing/page.tsx` |
-| `Payment Failed` | Order creation fails, or Razorpay reports `payment.failed`; includes a `reason` string | `frontend/app/pricing/page.tsx` |
+| `Payment Failed` | Order creation fails, or Razorpay reports `payment.failed`; includes a `reason` string and a `failure_category` (see below) | `frontend/app/pricing/page.tsx` |
 | `Logout` | User signs out | `frontend/app/dashboard/page.tsx` |
+| `pricing_page_viewed` | Pricing page (`/pricing`) mounts | `frontend/app/pricing/page.tsx` |
+| `pipeline_failed` | Job polling observes a terminal `status: "failed"` job; fires once (polling stops immediately after) | `frontend/hooks/usePipeline.ts` |
+| `credits_exhausted_cta_viewed` | The "out of credits / Upgrade to Pro" CTA on the dashboard upload panel first becomes visible in a given mount | `frontend/components/UploadPanel.tsx` |
+| `credits_exhausted_cta_clicked` | User clicks the "Upgrade to Pro" link inside that CTA | `frontend/components/UploadPanel.tsx` |
 
 **Note on pre-existing events:** several events from AGC-081's spec already had a differently-named
 equivalent firing in the codebase (e.g. `upload_started`, `pipeline_completed`, `logout`,
@@ -43,6 +47,54 @@ backend verification call fails or times out (`verification_unconfirmed` state, 
 "Retry Verification" button), that path is **not** tagged `Payment Failed` — the payment itself
 succeeded, only confirmation is pending, and mislabeling it would corrupt revenue-funnel counts.
 It resolves into `Payment Success` once verification succeeds.
+
+---
+
+## GROW-007 — Conversion Funnel Truth
+
+### `Payment Failed.failure_category`
+
+`Payment Failed` now carries a `failure_category` alongside the existing `reason` string. Only
+categories the current architecture can prove are used — both are derived deterministically from
+which stage of `handleUpgrade` (`frontend/app/pricing/page.tsx`) was in flight when the failure
+occurred, not from parsing error text:
+
+| Value | Fires when |
+|---|---|
+| `order_creation_failed` | `createPaymentOrder` throws before a Razorpay order exists |
+| `checkout_failed` | Razorpay checkout fails to open, or Razorpay itself reports `payment.failed` after the modal opened |
+
+There is no `verification_failed` category: as noted above, a verification failure/timeout is
+intentionally **not** tagged `Payment Failed` (the payment already succeeded), so no call site
+exists to attribute that category to.
+
+### `pricing_page_viewed` / `pipeline_failed` / credit-exhaustion CTA dedup
+
+- `pricing_page_viewed` fires from a `useEffect(() => { ... }, [])` on mount, the same pattern as
+  `Landing Page Viewed` and `Dashboard Viewed` — a checkout-state re-render never re-triggers it.
+- `pipeline_failed` fires only inside the polling branch that observes a terminal
+  `job.status === "failed"`. That branch calls `stopPolling()` immediately, so it can run at most
+  once per job. Transient polling/network errors (the `catch` around the poll `fetch`) never reach
+  this branch and never fire the event. No raw `job.error` text is sent — only `status`.
+- `credits_exhausted_cta_viewed` fires once per `UploadPanel` mount, guarded by a ref that flips
+  the first time `outOfCredits` becomes `true`; it does not re-fire on subsequent renders while the
+  CTA stays visible.
+- `credits_exhausted_cta_clicked` fires from the CTA `Link`'s `onClick`, in addition to (not instead
+  of) its normal navigation to `/pricing`. It is a distinct signal from `Upgrade Button Clicked`,
+  which is preserved unchanged and only fires from the pricing page itself.
+
+### Repeat-user definition (corrected)
+
+**Repeat user = an external user with AI jobs on at least 2 distinct calendar dates**
+(`COUNT(DISTINCT date(jobs.created_at)) >= 2`, scoped to `is_internal = 0` users with a
+resolvable `jobs.user_id`), computed in
+`MissionControlService._get_live_metrics` (`backend/app/services/mission_control_service.py`).
+
+Previously this used `COUNT(*) >= 2` — i.e. two-or-more job rows for the same user, with no
+date distinction. That counted same-day retries and repeated runs (e.g. re-running the pipeline
+twice in one sitting) as "returned", which is not a retention signal. This is a simple MVP
+return-usage signal, not a cohort retention model — it says nothing about time-to-return, churn,
+or repeat frequency, only whether the user has ever come back on a different day.
 
 ---
 
@@ -112,7 +164,9 @@ Only anonymous/user IDs already used by PostHog, event names, and the properties
 | `frontend/app/verify-email/page.tsx` | `Email Verified` |
 | `frontend/app/login/page.tsx` | `Login Success` |
 | `frontend/app/dashboard/page.tsx` | `Dashboard Viewed`, `Logout`, `Download Reel` / `Download Thumbnail` (primary result download) |
-| `frontend/hooks/usePipeline.ts` | `Upload Started`, `Upload Completed`, `Pipeline Started`, `Pipeline Completed`, `Highlights Generated` |
+| `frontend/hooks/usePipeline.ts` | `Upload Started`, `Upload Completed`, `Pipeline Started`, `Pipeline Completed`, `Highlights Generated`, `pipeline_failed` |
 | `frontend/components/ProjectsPanel.tsx` | `Download Reel`, `Download Thumbnail`, `Project Deleted` |
 | `frontend/components/ResultPanel.tsx` | `Download Reel`, `Download Thumbnail` |
-| `frontend/app/pricing/page.tsx` | `Upgrade Button Clicked`, `Checkout Started`, `Payment Success`, `Payment Failed` |
+| `frontend/app/pricing/page.tsx` | `Upgrade Button Clicked`, `Checkout Started`, `Payment Success`, `Payment Failed` (+ `failure_category`), `pricing_page_viewed` |
+| `frontend/components/UploadPanel.tsx` | `credits_exhausted_cta_viewed`, `credits_exhausted_cta_clicked` |
+| `backend/app/services/mission_control_service.py` | `repeat_users` — distinct-calendar-date definition (GROW-007) |

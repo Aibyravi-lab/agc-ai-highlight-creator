@@ -120,6 +120,12 @@ export function usePipeline() {
           refreshUser();
         } else if (job.status === "failed") {
           stopPolling();
+          // Fires exactly once: this branch only runs on the terminal
+          // "failed" status, and stopPolling() prevents any further ticks
+          // for this job. job.error is intentionally omitted — it can
+          // contain raw backend exception text, which must never reach
+          // PostHog.
+          track("pipeline_failed", { status: job.status });
           setState((prev) => {
             return { ...prev, loading: false, error: job.error || "Processing failed", currentJobId: null };
           });
