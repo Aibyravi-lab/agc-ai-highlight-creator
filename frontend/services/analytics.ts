@@ -14,9 +14,6 @@ type AnalyticsEvent =
   | "Project Downloaded"
   | "Project Deleted"
   | "User Logged Out"
-  | "Feedback Opened"
-  | "Feedback Submitted"
-  | "Feedback Skipped"
   | "logout"
   | "pipeline_started"
   | "pipeline_completed"
@@ -47,7 +44,11 @@ type AnalyticsEvent =
   | "landing_scroll_75"
   | "landing_scroll_100"
   // AGC-083 signup conversion analytics
-  | "signup_completed";
+  | "signup_completed"
+  // GROW-005 in-app feedback loop
+  | "feedback_prompt_viewed"
+  | "feedback_rating_selected"
+  | "feedback_submitted";
 
 // Analytics must never break the user flow — every call is wrapped so a
 // PostHog/network failure is swallowed instead of propagating into caller code.

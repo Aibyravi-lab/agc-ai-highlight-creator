@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { Distribution, LiveMetrics } from "../../../types/missionControl";
+import type { Distribution, FeedbackSummary, LiveMetrics } from "../../../types/missionControl";
 import { IconAlertTriangle, IconCreditCard, IconRepeat, IconUsers } from "./icons";
 import { IconWrap, SectionCard, SectionTitle } from "./primitives";
 
@@ -12,7 +12,20 @@ interface Signal {
   message: string;
 }
 
-function buildSignals(metrics: LiveMetrics, distribution: Distribution): Signal[] {
+// GROW-005: raw improvement_area values -> founder-readable labels.
+const IMPROVEMENT_AREA_LABELS: Record<string, string> = {
+  highlight_selection: "Highlight selection",
+  clip_timing: "Clip timing",
+  processing_speed: "Processing speed",
+  captions: "Captions",
+  other: "Other",
+};
+
+function buildSignals(
+  metrics: LiveMetrics,
+  distribution: Distribution,
+  feedbackSummary: FeedbackSummary
+): Signal[] {
   const signals: Signal[] = [];
 
   if (metrics.users_with_jobs > 0) {
@@ -60,17 +73,52 @@ function buildSignals(metrics: LiveMetrics, distribution: Distribution): Signal[
     });
   }
 
+  // GROW-005: feedback intelligence, only shown once real responses exist.
+  if (feedbackSummary.total_responses > 0) {
+    signals.push({
+      id: "feedback_users",
+      icon: <IconUsers className="w-4 h-4" />,
+      tone: "cyan",
+      message: `${metrics.distinct_feedback_users} user${
+        metrics.distinct_feedback_users === 1 ? "" : "s"
+      } rated their Vedzovi results.`,
+    });
+
+    if (feedbackSummary.positive_rate !== null) {
+      signals.push({
+        id: "feedback_positive_rate",
+        icon: <IconRepeat className="w-4 h-4" />,
+        tone: feedbackSummary.positive_rate >= 50 ? "green" : "amber",
+        message: `${feedbackSummary.positive_rate}% of feedback is Great or Good.`,
+      });
+    }
+
+    if (feedbackSummary.top_improvement_area) {
+      const label =
+        IMPROVEMENT_AREA_LABELS[feedbackSummary.top_improvement_area] ??
+        feedbackSummary.top_improvement_area;
+      signals.push({
+        id: "top_improvement_area",
+        icon: <IconAlertTriangle className="w-4 h-4" />,
+        tone: "amber",
+        message: `${label} is the most reported improvement area.`,
+      });
+    }
+  }
+
   return signals;
 }
 
 export function FounderSignals({
   metrics,
   distribution,
+  feedbackSummary,
 }: {
   metrics: LiveMetrics;
   distribution: Distribution;
+  feedbackSummary: FeedbackSummary;
 }) {
-  const signals = buildSignals(metrics, distribution);
+  const signals = buildSignals(metrics, distribution, feedbackSummary);
 
   return (
     <div>

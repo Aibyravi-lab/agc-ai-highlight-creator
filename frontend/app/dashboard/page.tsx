@@ -239,7 +239,10 @@ function DashboardContent({
             <DownloadPanel result={result} />
             <ResultPanel result={result} />
             {!feedbackDismissed && (
-              <FeedbackCard onDismiss={() => setFeedbackDismissed(true)} />
+              <FeedbackCard
+                projectId={result.project_id ?? null}
+                onDismiss={() => setFeedbackDismissed(true)}
+              />
             )}
           </section>
         )}

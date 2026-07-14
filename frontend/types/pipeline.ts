@@ -85,6 +85,9 @@ export interface ExtendedPipelineResult {
   stats?: ProcessingStats;
   social_exports?: SocialExports;
   all_highlights?: HighlightItem[];
+  // GROW-005: the project row created for this completed job, when
+  // registration succeeded. Used to associate feedback deterministically.
+  project_id?: number | null;
 }
 
 export interface PipelineJob {
@@ -161,12 +164,20 @@ export interface ProjectsResponse {
   data: ProjectItem[];
 }
 
+export type ImprovementArea =
+  | "highlight_selection"
+  | "clip_timing"
+  | "processing_speed"
+  | "captions"
+  | "other";
+
 export interface FeedbackItem {
   id: number;
   user_id: number;
   project_id: number | null;
   rating: number | null;
   thumbs: "up" | "down" | null;
+  improvement_area: ImprovementArea | null;
   comment: string | null;
   created_at: string;
 }
@@ -175,5 +186,6 @@ export interface SubmitFeedbackRequest {
   project_id?: number | null;
   rating?: number | null;
   thumbs?: "up" | "down" | null;
+  improvement_area?: ImprovementArea | null;
   comment?: string | null;
 }

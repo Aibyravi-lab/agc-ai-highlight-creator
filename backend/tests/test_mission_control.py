@@ -96,6 +96,23 @@ def _insert_feedback(user_id: int) -> None:
     connection.close()
 
 
+def _insert_feedback_with_rating(
+    user_id: int, rating: int, improvement_area: str = None, project_id: int = None
+) -> None:
+    connection = DatabaseService.get_connection()
+    cursor = connection.cursor()
+    now = datetime.utcnow().isoformat()
+    cursor.execute(
+        """
+        INSERT INTO feedback (user_id, project_id, rating, improvement_area, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (user_id, project_id, rating, improvement_area, now),
+    )
+    connection.commit()
+    connection.close()
+
+
 def _insert_payment(user_id: int) -> None:
     connection = DatabaseService.get_connection()
     cursor = connection.cursor()
@@ -175,6 +192,7 @@ class MissionControlEndpointTests(unittest.TestCase):
                 "release",
                 "weekly_activity",
                 "social_integrations",
+                "feedback_summary",
             },
         )
 
@@ -268,6 +286,88 @@ class MissionControlServiceMetricsTests(unittest.TestCase):
         self.assertEqual(distribution["jobs_per_user"]["6+"], 1)
 
 
+class MissionControlFeedbackSummaryTests(unittest.TestCase):
+
+    def setUp(self):
+        self._tmp_dir = _make_isolated_db()
+
+    def tearDown(self):
+        self._tmp_dir.cleanup()
+
+    def test_feedback_summary_defaults_on_empty_db(self):
+        summary = MissionControlService._get_feedback_summary()
+
+        self.assertEqual(summary["total_responses"], 0)
+        self.assertIsNone(summary["positive_rate"])
+        self.assertEqual(
+            summary["rating_distribution"],
+            {"great": 0, "good": 0, "okay": 0, "bad": 0},
+        )
+        self.assertIsNone(summary["top_improvement_area"])
+
+    def test_feedback_summary_aggregates_ratings_positive_rate_and_top_area(self):
+        u1 = _create_user("fb1@test.com")
+        u2 = _create_user("fb2@test.com")
+        u3 = _create_user("fb3@test.com")
+        u4 = _create_user("fb4@test.com")
+
+        _insert_feedback_with_rating(u1, rating=4, improvement_area="clip_timing")
+        _insert_feedback_with_rating(u2, rating=4, improvement_area="clip_timing")
+        _insert_feedback_with_rating(u3, rating=3, improvement_area="captions")
+        _insert_feedback_with_rating(u4, rating=1)
+
+        summary = MissionControlService._get_feedback_summary()
+
+        self.assertEqual(summary["total_responses"], 4)
+        self.assertEqual(
+            summary["rating_distribution"],
+            {"great": 2, "good": 1, "okay": 0, "bad": 1},
+        )
+        # 3 of 4 ratings are Good/Great -> 75.0%
+        self.assertEqual(summary["positive_rate"], 75.0)
+        self.assertEqual(summary["top_improvement_area"], "clip_timing")
+
+    def test_no_sensitive_or_per_user_data_in_feedback_summary(self):
+        summary = MissionControlService.get_summary()
+
+        serialized = str(summary["feedback_summary"]).lower()
+        for forbidden in ("comment", "user_id", "email"):
+            self.assertNotIn(forbidden, serialized)
+
+    def test_legacy_out_of_range_rating_does_not_corrupt_positive_rate(self):
+        # A pre-GROW-005 row could have rating=5 (the old 1-5 scale's top
+        # value), which isn't one of the four approved labels. It must be
+        # excluded from BOTH the numerator and denominator together, not
+        # just left out of the numerator while still inflating total_rated.
+        u1 = _create_user("legacy1@test.com")
+        u2 = _create_user("legacy2@test.com")
+
+        _insert_feedback_with_rating(u1, rating=4)  # great, approved scale
+        _insert_feedback_with_rating(u2, rating=5)  # legacy, out of range
+
+        summary = MissionControlService._get_feedback_summary()
+
+        self.assertEqual(summary["total_responses"], 2)
+        # Only the rating=4 row counts toward the distribution/positive_rate.
+        self.assertEqual(
+            summary["rating_distribution"],
+            {"great": 1, "good": 0, "okay": 0, "bad": 0},
+        )
+        self.assertEqual(summary["positive_rate"], 100.0)
+
+    def test_top_improvement_area_tie_break_is_deterministic(self):
+        u1 = _create_user("tie1@test.com")
+        u2 = _create_user("tie2@test.com")
+
+        _insert_feedback_with_rating(u1, rating=2, improvement_area="processing_speed")
+        _insert_feedback_with_rating(u2, rating=2, improvement_area="captions")
+
+        summary = MissionControlService._get_feedback_summary()
+
+        # Tied 1-1 on count; alphabetical tiebreaker picks "captions".
+        self.assertEqual(summary["top_improvement_area"], "captions")
+
+
 class MissionControlBlockerTests(unittest.TestCase):
 
     def setUp(self):
@@ -282,6 +382,15 @@ class MissionControlBlockerTests(unittest.TestCase):
         blocker_ids = {b["id"] for b in summary["blockers"]}
         self.assertIn("zero_feedback_users", blocker_ids)
         self.assertIn("no_processed_payments", blocker_ids)
+
+    def test_zero_feedback_blocker_absent_once_feedback_exists(self):
+        user_id = _create_user("hasfeedback@test.com")
+        _insert_feedback_with_rating(user_id, rating=4)
+
+        summary = MissionControlService.get_summary()
+
+        blocker_ids = {b["id"] for b in summary["blockers"]}
+        self.assertNotIn("zero_feedback_users", blocker_ids)
 
     def test_elevated_failed_job_rate_blocker(self):
         user_id = _create_user("failrate@test.com")

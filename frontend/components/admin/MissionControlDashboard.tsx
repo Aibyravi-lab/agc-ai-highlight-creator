@@ -28,7 +28,11 @@ export function MissionControlDashboard({
       <UserFunnel metrics={summary.live_metrics} />
       <DistributionPanel distribution={summary.distribution} />
       <AIEngineStatus health={summary.production_health} capabilityRegistry={summary.capability_registry} />
-      <FounderSignals metrics={summary.live_metrics} distribution={summary.distribution} />
+      <FounderSignals
+        metrics={summary.live_metrics}
+        distribution={summary.distribution}
+        feedbackSummary={summary.feedback_summary}
+      />
       <BlockersPanel blockers={summary.blockers} />
       <CapabilityRegistry registry={summary.capability_registry} />
       <SocialPulse integrations={summary.social_integrations} />

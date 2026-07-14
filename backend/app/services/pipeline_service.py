@@ -923,7 +923,7 @@ class PipelineService:
                     )
 
                 with profiler.track("Project Registration"):
-                    ProjectService.create_project(
+                    project_id = ProjectService.create_project(
                         user_id=user_id,
                         job_id=job_id,
                         original_video_name=
@@ -945,6 +945,13 @@ class PipelineService:
                             "result_json"
                         ) or None,
                     )
+
+                # GROW-005: surfaced on the job result so the frontend can
+                # associate feedback with this project deterministically,
+                # without a separate lookup/matching step.
+                metadata[
+                    "project_id"
+                ] = project_id
 
                 metadata[
                     "history_saved"

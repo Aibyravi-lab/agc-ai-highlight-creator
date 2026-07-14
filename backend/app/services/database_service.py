@@ -230,6 +230,8 @@ class DatabaseService:
 
                 thumbs TEXT,
 
+                improvement_area TEXT,
+
                 comment TEXT,
 
                 created_at TEXT NOT NULL
@@ -237,6 +239,45 @@ class DatabaseService:
             )
             """
         )
+
+        # GROW-005: add improvement_area to existing feedback tables that
+        # predate this column.
+        try:
+            cursor.execute(
+                "ALTER TABLE feedback ADD COLUMN improvement_area TEXT"
+            )
+            connection.commit()
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc).lower():
+                raise
+
+        # GROW-005: one feedback submission per user per project — NULLs
+        # (feedback not tied to a project) are exempt since SQLite treats
+        # each NULL as distinct for UNIQUE indexes.
+        #
+        # "IF NOT EXISTS" only guards against the index already existing by
+        # name — it does NOT guard against pre-existing duplicate
+        # (user_id, project_id) rows, which make index creation itself fail
+        # with sqlite3.IntegrityError. Since this runs unguarded at process
+        # startup (see app/main.py), an unhandled failure here would take
+        # the whole app down on every future boot. Caught here instead:
+        # duplicate prevention silently stays inactive on that one row set
+        # rather than crashing the server, and no feedback rows are touched
+        # or deleted.
+        try:
+            cursor.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_feedback_user_project
+                ON feedback(user_id, project_id)
+                WHERE project_id IS NOT NULL
+                """
+            )
+            connection.commit()
+        except sqlite3.IntegrityError as exc:
+            print(
+                "WARNING: could not create idx_feedback_user_project — "
+                f"existing duplicate (user_id, project_id) rows in feedback: {exc}"
+            )
 
         cursor.execute(
             """

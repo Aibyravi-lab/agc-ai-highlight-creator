@@ -77,6 +77,20 @@ export interface SocialIntegration {
   status: "not_connected" | "connected";
 }
 
+export interface FeedbackRatingDistribution {
+  great: number;
+  good: number;
+  okay: number;
+  bad: number;
+}
+
+export interface FeedbackSummary {
+  total_responses: number;
+  positive_rate: number | null;
+  rating_distribution: FeedbackRatingDistribution;
+  top_improvement_area: string | null;
+}
+
 export interface MissionControlSummary {
   production_health: ProductionHealth;
   live_metrics: LiveMetrics;
@@ -86,4 +100,5 @@ export interface MissionControlSummary {
   release: ReleaseInfo;
   weekly_activity: DailyActivity[];
   social_integrations: SocialIntegration[];
+  feedback_summary: FeedbackSummary;
 }

@@ -3,6 +3,7 @@ from typing import Optional
 
 from app.config.config import settings
 from app.services.database_service import DatabaseService
+from app.services.feedback_service import FeedbackService
 from app.services.health_service import HealthService
 from app.services.maintenance_service import MaintenanceService
 from app.services.observability_service import ObservabilityService
@@ -125,6 +126,7 @@ class MissionControlService:
             "release": release,
             "weekly_activity": cls._get_weekly_activity(),
             "social_integrations": SOCIAL_INTEGRATIONS,
+            "feedback_summary": cls._get_feedback_summary(),
         }
 
     @classmethod
@@ -285,6 +287,72 @@ class MissionControlService:
                 "healthy": healthy or 0,
             },
             "jobs_per_user": jobs_per_user_buckets,
+        }
+
+    @classmethod
+    def _get_feedback_summary(cls) -> dict:
+        # GROW-005: aggregate-only feedback intelligence for the founder
+        # dashboard. No comments or per-user data are exposed here — only
+        # counts and rates derived from FeedbackService.RATING_LABELS.
+
+        connection = DatabaseService.get_connection()
+        cursor = connection.cursor()
+
+        cursor.execute("SELECT COUNT(*) FROM feedback")
+        total_responses = cursor.fetchone()[0] or 0
+
+        cursor.execute(
+            """
+            SELECT rating, COUNT(*) FROM feedback
+            WHERE rating IS NOT NULL
+            GROUP BY rating
+            """
+        )
+        rating_counts = {row[0]: row[1] for row in cursor.fetchall()}
+
+        cursor.execute(
+            """
+            SELECT improvement_area, COUNT(*) AS n
+            FROM feedback
+            WHERE improvement_area IS NOT NULL
+            GROUP BY improvement_area
+            ORDER BY n DESC, improvement_area ASC
+            LIMIT 1
+            """
+        )
+        top_area_row = cursor.fetchone()
+
+        connection.close()
+
+        rating_distribution = {
+            label: rating_counts.get(value, 0)
+            for value, label in FeedbackService.RATING_LABELS.items()
+        }
+
+        # Only count ratings within the approved 1-4 scale: a legacy/
+        # malformed rating value (e.g. a pre-GROW-005 row rated 5) must be
+        # excluded from both the numerator and denominator together, or it
+        # would silently deflate positive_rate without appearing anywhere
+        # in rating_distribution to explain the discrepancy.
+        total_rated = sum(
+            count
+            for value, count in rating_counts.items()
+            if value in FeedbackService.RATING_LABELS
+        )
+        positive = sum(
+            count
+            for value, count in rating_counts.items()
+            if value in FeedbackService.POSITIVE_RATINGS
+        )
+        positive_rate = (
+            round(positive / total_rated * 100, 1) if total_rated > 0 else None
+        )
+
+        return {
+            "total_responses": total_responses,
+            "positive_rate": positive_rate,
+            "rating_distribution": rating_distribution,
+            "top_improvement_area": top_area_row[0] if top_area_row else None,
         }
 
     @classmethod
