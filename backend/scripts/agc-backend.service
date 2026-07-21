@@ -8,6 +8,14 @@
 # (which already proxy_pass to 127.0.0.1:8000). The previous 0.0.0.0 bind
 # relied entirely on ufw denying external access to 8000 as its only
 # defense — binding loopback-only removes that single point of failure.
+#
+# VED-SEC-001: --proxy-headers --forwarded-allow-ips=127.0.0.1 makes explicit
+# (rather than implicit-via-library-default) that nginx (agc.conf, connecting
+# from 127.0.0.1 and setting X-Forwarded-For) is the only trusted proxy hop.
+# With this, request.client.host in the app reflects the real client IP, so
+# RateLimitService buckets (login/register/forgot-password/etc, keyed on
+# request.client.host) are isolated per real attacker instead of collapsing
+# onto a single shared "127.0.0.1" bucket. See test_proxy_header_trust.py.
 
 [Unit]
 Description=AGC AI Highlight Creator - FastAPI backend
@@ -18,7 +26,7 @@ Type=simple
 User=agc
 WorkingDirectory=/home/agc/agc-ai-highlight-creator/backend
 Environment=PATH=/home/agc/agc-ai-highlight-creator/venv/bin
-ExecStart=/home/agc/agc-ai-highlight-creator/venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+ExecStart=/home/agc/agc-ai-highlight-creator/venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips=127.0.0.1
 Restart=always
 RestartSec=5
 KillSignal=SIGTERM
