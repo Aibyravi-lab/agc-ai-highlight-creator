@@ -16,6 +16,19 @@
 # RateLimitService buckets (login/register/forgot-password/etc, keyed on
 # request.client.host) are isolated per real attacker instead of collapsing
 # onto a single shared "127.0.0.1" bucket. See test_proxy_header_trust.py.
+#
+# VED-SEC-001 follow-up: PATH was venv/bin only (set since AGC-045.2,
+# pre-existing, unrelated to the proxy-headers change above), which contains
+# only the venv's own console scripts. FFmpegService.validate() and every
+# ffmpeg/ffprobe/git subprocess call (audio/caption/editor/frame/reel/
+# video/health_service.py) resolve their executable via a bare name through
+# shutil.which()/PATH lookup, not an absolute path — none of them are
+# installed into the venv, so a venv-only PATH made them unresolvable.
+# /usr/local/bin:/usr/bin:/bin is appended (not prepended) so the venv's
+# own python/pip are still resolved first for any bare-name lookup;
+# ffmpeg/ffprobe/git (apt-installed per docs/deploy.md, docs/VPS_REBUILD.md)
+# live in /usr/bin and are only reached once venv/bin has been checked and
+# missed. See test_systemd_unit_path.py.
 
 [Unit]
 Description=AGC AI Highlight Creator - FastAPI backend
@@ -25,7 +38,7 @@ After=network.target
 Type=simple
 User=agc
 WorkingDirectory=/home/agc/agc-ai-highlight-creator/backend
-Environment=PATH=/home/agc/agc-ai-highlight-creator/venv/bin
+Environment=PATH=/home/agc/agc-ai-highlight-creator/venv/bin:/usr/local/bin:/usr/bin:/bin
 ExecStart=/home/agc/agc-ai-highlight-creator/venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips=127.0.0.1
 Restart=always
 RestartSec=5
