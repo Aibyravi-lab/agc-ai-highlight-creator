@@ -35,6 +35,10 @@ benchmark/storage/
 # Test cache
 .pytest_cache/
 
+# Coverage artifacts (VED-P1-001 CI quality gate)
+backend/.coverage
+backend/coverage.xml
+
 # Environment files
 .env
 .env.*

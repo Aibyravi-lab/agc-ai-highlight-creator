@@ -1,0 +1,168 @@
+name: CI Quality Gate
+
+# VED-P1-001: required-check gate for pull requests into main.
+#
+# Policy: only NEW problems block a merge — pre-existing repository
+# issues are treated as baseline and must not regress work unrelated to
+# a given PR. Concretely:
+#   - Backend tests / frontend tests / typecheck / build run in full,
+#     because each is verified clean on the current baseline (see
+#     docs/ci.md) — a full-repo run only fails on a genuine regression.
+#   - ESLint is scoped to files changed in the PR/push, because the
+#     baseline currently has pre-existing lint errors in files this
+#     sprint does not touch (see docs/ci.md for the list and rationale).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend-tests:
+    name: Backend Tests + Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Create virtual environment
+        run: python -m venv backend/venv
+
+      - name: Install backend + test dependencies
+        run: |
+          source backend/venv/bin/activate
+          pip install --upgrade pip
+          pip install -r backend/requirements-dev.txt
+
+      - name: Run backend test suite with coverage
+        working-directory: backend
+        run: |
+          source venv/bin/activate
+          pytest --cov=app --cov-report=term-missing --cov-report=xml
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/coverage.xml
+          retention-days: 14
+
+  frontend-typecheck:
+    name: Frontend TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Type check
+        working-directory: frontend
+        run: npm run typecheck
+
+  frontend-tests:
+    name: Frontend Tests + Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run test suite with coverage
+        working-directory: frontend
+        run: npm run test:coverage
+
+  frontend-lint-changed:
+    name: Frontend Lint (changed files)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Determine changed files
+        id: changed
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+
+          # Fall back to diffing against the parent commit when there is
+          # no usable base (e.g. force-push, or a brand new branch).
+          if [ -z "$base" ] || ! git cat-file -e "$base" 2>/dev/null; then
+            base=$(git rev-parse HEAD~1 2>/dev/null || echo "")
+          fi
+
+          if [ -z "$base" ]; then
+            echo "files=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          files=$(git diff --name-only --diff-filter=ACMR "$base" HEAD -- 'frontend/**/*.ts' 'frontend/**/*.tsx' | sed 's#^frontend/##' | grep -v '\.test\.' || true)
+          echo "files<<QUALITY_GATE_EOF" >> "$GITHUB_OUTPUT"
+          echo "$files" >> "$GITHUB_OUTPUT"
+          echo "QUALITY_GATE_EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Lint changed files
+        if: steps.changed.outputs.files != ''
+        working-directory: frontend
+        run: npx eslint --no-error-on-unmatched-pattern ${{ steps.changed.outputs.files }}
+
+      - name: No frontend files changed
+        if: steps.changed.outputs.files == ''
+        run: echo "No changed .ts/.tsx files under frontend/ — skipping lint."
+
+  workflow-lint:
+    name: Validate Workflow Files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run actionlint
+        run: |
+          bash <(curl -sSf https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color

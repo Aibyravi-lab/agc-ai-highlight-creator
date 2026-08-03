@@ -1,0 +1,5 @@
+# Test-only dependencies for the CI quality gate. Not required to run the
+# application itself — see requirements.txt for that.
+-r requirements.txt
+pytest==9.1.1
+pytest-cov==6.0.0

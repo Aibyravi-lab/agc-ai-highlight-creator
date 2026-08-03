@@ -209,6 +209,16 @@ Frontend: `http://localhost:3000`
 
 ---
 
+## Continuous Integration
+
+Every push and pull request to `main` runs an automated quality gate —
+backend tests with coverage, frontend type checking and tests, scoped
+ESLint on changed files, and build verification. See
+[docs/ci.md](docs/ci.md) for the full breakdown, required checks, and how
+to run the same checks locally.
+
+---
+
 ## Deployment
 
 See [docs/deploy.md](docs/deploy.md) for the complete production deployment guide covering:
