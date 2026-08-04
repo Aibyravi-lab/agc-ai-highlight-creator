@@ -127,7 +127,7 @@ class ObservabilityService:
             completed_rows = cursor.fetchall()
             connection.close()
 
-            avg_time = cls._compute_avg_processing_time(
+            avg_time = cls.average_job_duration_seconds(
                 completed_rows
             )
 
@@ -184,10 +184,14 @@ class ObservabilityService:
         return Path(settings.JOBS_FOLDER).exists()
 
     @classmethod
-    def _compute_avg_processing_time(
+    def average_job_duration_seconds(
         cls,
         rows: list
     ) -> Optional[float]:
+        # CR-041: public so OpsService can reuse this exact averaging math
+        # against its own (bounded-sample) row set instead of duplicating
+        # the parse/average loop — see OpsService._JOBS_AVG_DURATION_SAMPLE_LIMIT
+        # for why the two callers still run different SQL to produce `rows`.
 
         durations = []
 

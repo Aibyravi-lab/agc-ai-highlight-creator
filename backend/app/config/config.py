@@ -26,6 +26,21 @@ if not _JWT_SECRET_KEY_ENV:
     )
 
 
+# VED-OPS-001: dedicated, customer-auth-independent key for the internal
+# Operations API. Unlike JWT_SECRET_KEY, there is no random fallback and no
+# startup hard-fail here: verify_ops_api_key already rejects every request
+# when this is unset (fail-closed), so a missing key just means the ops
+# surface is disabled, not that the whole app can't start.
+_OPS_API_KEY_ENV = os.getenv("OPS_API_KEY")
+
+if not _OPS_API_KEY_ENV:
+    print(
+        "WARNING: OPS_API_KEY not set — the internal Operations API "
+        "(/api/v1/ops/*) will reject all requests. "
+        "Set OPS_API_KEY in backend/.env to enable it (see .env.example)."
+    )
+
+
 class Settings(BaseSettings):
 
     API_HOST: str = os.getenv(
@@ -451,6 +466,18 @@ class Settings(BaseSettings):
         os.getenv(
             "RESEND_VERIFICATION_RATE_LIMIT_MAX_PER_HOUR",
             "5"
+        )
+    )
+
+    # VED-OPS-001: internal Operations API (/api/v1/ops/*) — read-only,
+    # aggregate-only surface consumed by Founder Pulse. Completely
+    # independent from JWT_SECRET_KEY / customer auth.
+    OPS_API_KEY: str = _OPS_API_KEY_ENV or ""
+
+    OPS_CACHE_TTL_SECONDS: int = int(
+        os.getenv(
+            "OPS_CACHE_TTL_SECONDS",
+            "15"
         )
     )
 

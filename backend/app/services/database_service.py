@@ -479,6 +479,23 @@ class DatabaseService:
             """
         )
 
+        # VED-OPS-001: jobs had no indexes at all. The Operations API's
+        # /jobs and /queue endpoints filter on status (and cap by
+        # created_at/completed_at) on every request, targeting p95 < 50ms.
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_jobs_status
+            ON jobs(status)
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_jobs_created_at
+            ON jobs(created_at)
+            """
+        )
+
         connection.commit()
 
         connection.close()
