@@ -9,20 +9,34 @@ from app.services.game_profiles.base_profile import BaseProfile, DefaultProfile
 
 class ClipService:
 
-    model = CLIPModel.from_pretrained(
-        "openai/clip-vit-base-patch32"
-    )
+    # VED-P1-003: model/processor used to be shared singletons guarded by a
+    # single global lock, because concurrent forward passes on the same
+    # instance raced on internal buffers (observed in production as a bare
+    # Linear-layer repr surfacing as the job error). That lock fully
+    # serialized CLIP inference — the pipeline's single largest per-frame
+    # cost — across every concurrent job regardless of MAX_CONCURRENT_JOBS.
+    # Each ThreadPoolExecutor worker thread now lazily loads and keeps its
+    # own model/processor instance, so there is no cross-thread mutable
+    # state left to race on and no lock is needed.
+    _thread_local = threading.local()
 
-    processor = CLIPProcessor.from_pretrained(
-        "openai/clip-vit-base-patch32"
-    )
+    @classmethod
+    def _get_model_and_processor(cls):
 
-    # The model/processor above are shared singletons used by every
-    # background job worker thread. Concurrent forward passes on the
-    # same instance race on internal buffers (observed in production
-    # as a bare Linear-layer repr surfacing as the job error), so all
-    # inference through them is serialized here.
-    _inference_lock = threading.Lock()
+        if not hasattr(cls._thread_local, "model"):
+
+            cls._thread_local.model = CLIPModel.from_pretrained(
+                "openai/clip-vit-base-patch32"
+            )
+
+            cls._thread_local.processor = CLIPProcessor.from_pretrained(
+                "openai/clip-vit-base-patch32"
+            )
+
+        return (
+            cls._thread_local.model,
+            cls._thread_local.processor
+        )
 
     @classmethod
     def get_all_prompts(
@@ -49,6 +63,8 @@ class ClipService:
     @classmethod
     def _get_text_embeddings(
         cls,
+        model: CLIPModel,
+        processor: CLIPProcessor,
         prompt_texts: list[str],
         text_embedding_cache: dict | None
     ) -> torch.Tensor:
@@ -60,14 +76,14 @@ class ClipService:
         ):
             return text_embedding_cache[cache_key]
 
-        text_inputs = cls.processor(
+        text_inputs = processor(
             text=prompt_texts,
             return_tensors="pt",
             padding=True
         )
 
         with torch.no_grad():
-            text_outputs = cls.model.get_text_features(
+            text_outputs = model.get_text_features(
                 **text_inputs
             )
 
@@ -107,37 +123,39 @@ class ClipService:
 
         ]
 
-        with cls._inference_lock:
+        model, processor = cls._get_model_and_processor()
 
-            text_embeds = cls._get_text_embeddings(
-                prompt_texts,
-                text_embedding_cache
+        text_embeds = cls._get_text_embeddings(
+            model,
+            processor,
+            prompt_texts,
+            text_embedding_cache
+        )
+
+        image_inputs = processor(
+            images=image,
+            return_tensors="pt"
+        )
+
+        with torch.no_grad():
+            image_outputs = model.get_image_features(
+                **image_inputs
             )
 
-            image_inputs = cls.processor(
-                images=image,
-                return_tensors="pt"
-            )
+        image_embeds = cls._l2_normalize(
+            image_outputs.pooler_output
+        )
 
-            with torch.no_grad():
-                image_outputs = cls.model.get_image_features(
-                    **image_inputs
+        with torch.no_grad():
+            logits_per_text = (
+                torch.matmul(
+                    text_embeds,
+                    image_embeds.t()
                 )
-
-            image_embeds = cls._l2_normalize(
-                image_outputs.pooler_output
+                * model.logit_scale.exp()
             )
 
-            with torch.no_grad():
-                logits_per_text = (
-                    torch.matmul(
-                        text_embeds,
-                        image_embeds.t()
-                    )
-                    * cls.model.logit_scale.exp()
-                )
-
-                logits_per_image = logits_per_text.t()
+            logits_per_image = logits_per_text.t()
 
         scores = (
             logits_per_image

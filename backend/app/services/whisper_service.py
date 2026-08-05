@@ -9,29 +9,30 @@ from app.services.video_service import has_audio_stream
 
 class WhisperService:
 
-    _model = None
-
-    # Guards both lazy model creation (the check-then-load below is not
-    # atomic) and every call into the shared model afterwards: concurrent
-    # background job threads calling transcribe() on the same instance
-    # race on its internal decode buffers, which has crashed the process
-    # under concurrent load in production.
-    _lock = threading.Lock()
+    # VED-P1-003: the model used to be a single process-wide singleton
+    # guarded by a global lock, because concurrent background job threads
+    # calling transcribe() on the same instance raced on its internal
+    # decode buffers and crashed the process under concurrent load. That
+    # lock fully serialized transcription across every concurrent job.
+    # Each ThreadPoolExecutor worker thread now lazily loads and keeps its
+    # own model instance, so there is no cross-thread mutable state left
+    # to race on and no lock is needed.
+    _thread_local = threading.local()
 
     @classmethod
     def get_model(cls):
 
-        if cls._model is None:
+        if not hasattr(cls._thread_local, "model"):
 
             print(
                 "Loading Whisper model..."
             )
 
-            cls._model = whisper.load_model(
+            cls._thread_local.model = whisper.load_model(
                 "base"
             )
 
-        return cls._model
+        return cls._thread_local.model
 
     @staticmethod
     def _neutral_transcription() -> dict:
@@ -60,39 +61,36 @@ class WhisperService:
 
         if profiler is None:
 
-            with cls._lock:
-                model = cls.get_model()
-                result = model.transcribe(
-                    video_path
-                )
+            model = cls.get_model()
+            result = model.transcribe(
+                video_path
+            )
 
             return result
 
-        with cls._lock:
+        model_init_start = time.perf_counter()
+        model = cls.get_model()
+        profiler.add(
+            "Whisper Model Initialization",
+            time.perf_counter() - model_init_start
+        )
 
-            model_init_start = time.perf_counter()
-            model = cls.get_model()
-            profiler.add(
-                "Whisper Model Initialization",
-                time.perf_counter() - model_init_start
-            )
+        audio_extraction_start = time.perf_counter()
+        audio = whisper.audio.load_audio(
+            video_path
+        )
+        profiler.add(
+            "Whisper Audio Extraction",
+            time.perf_counter() - audio_extraction_start
+        )
 
-            audio_extraction_start = time.perf_counter()
-            audio = whisper.audio.load_audio(
-                video_path
-            )
-            profiler.add(
-                "Whisper Audio Extraction",
-                time.perf_counter() - audio_extraction_start
-            )
-
-            inference_start = time.perf_counter()
-            result = model.transcribe(
-                audio
-            )
-            profiler.add(
-                "Whisper Inference",
-                time.perf_counter() - inference_start
-            )
+        inference_start = time.perf_counter()
+        result = model.transcribe(
+            audio
+        )
+        profiler.add(
+            "Whisper Inference",
+            time.perf_counter() - inference_start
+        )
 
         return result

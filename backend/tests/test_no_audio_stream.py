@@ -154,7 +154,6 @@ def test_transcribe_video_no_audio_stream_with_profiler_skips_ffmpeg():
 
 
 def test_transcribe_video_with_audio_stream_still_transcribes():
-    whisper_service.WhisperService._model = None
     fake_model = MagicMock()
     fake_model.transcribe.return_value = {
         "text": "gg",
