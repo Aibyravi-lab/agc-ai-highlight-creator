@@ -1,7 +1,10 @@
+import hashlib
+import os
 import platform
 import shutil
 import subprocess
 import tempfile
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -10,6 +13,8 @@ from app.config.config import settings
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DISK_WARNING_FREE_PERCENT = 15.0
 _SUBPROCESS_TIMEOUT_SECONDS = 3
+_BACKUP_TIMESTAMP_FORMAT = "%Y-%m-%d_%H%M%S"
+_CHECKSUM_READ_CHUNK_BYTES = 1024 * 1024
 
 
 class HealthService:
@@ -174,3 +179,241 @@ class HealthService:
                 "disk": disk.get("status", "unhealthy"),
             },
         }
+
+    # ── VED-P1-002: Production Monitoring diagnostics ───────────────────
+    # Additive to the AGC-073 diagnostics above. Same contract: read-only,
+    # never raises, never returns a filesystem path, stack trace, or
+    # environment value. Severity/threshold judgement (warning vs.
+    # critical) belongs to HealthEngineService, not here — these methods
+    # only report raw, safely-collected values.
+
+    @classmethod
+    def check_sqlite_integrity(cls) -> dict:
+        """Runs PRAGMA integrity_check on a fresh connection. Read-only —
+        never writes to the database."""
+
+        from app.services.database_service import DatabaseService
+
+        try:
+            connection = DatabaseService.get_connection()
+            try:
+                cursor = connection.cursor()
+                cursor.execute("PRAGMA integrity_check")
+                row = cursor.fetchone()
+                ok = bool(row) and row[0] == "ok"
+                return {"status": "healthy" if ok else "unhealthy", "result": row[0] if row else "unknown"}
+            finally:
+                connection.close()
+        except Exception:
+            return {"status": "unhealthy", "result": "unknown"}
+
+    @classmethod
+    def get_memory_usage(cls) -> dict:
+        """Cross-platform best-effort read: /proc/meminfo on Linux (the
+        production target), GlobalMemoryStatusEx via ctypes (stdlib, no new
+        dependency) on Windows dev machines. Anything else reports
+        "unknown" rather than guessing.
+        """
+
+        try:
+            system = platform.system()
+
+            if system == "Linux":
+                fields: dict = {}
+                with open("/proc/meminfo", "r", encoding="utf-8") as handle:
+                    for line in handle:
+                        key, _, rest = line.partition(":")
+                        value = rest.strip().split(" ")[0]
+                        if value.isdigit():
+                            fields[key] = int(value)
+
+                total_kb = fields.get("MemTotal")
+                available_kb = fields.get("MemAvailable")
+
+                if not total_kb or available_kb is None:
+                    return cls._unknown_memory()
+
+                used_kb = total_kb - available_kb
+                percent_used = (used_kb / total_kb) * 100
+
+                return {
+                    "total_mb": round(total_kb / 1024, 2),
+                    "used_mb": round(used_kb / 1024, 2),
+                    "percent_used": round(percent_used, 2),
+                    "status": "ok",
+                }
+
+            if system == "Windows":
+                import ctypes
+
+                class _MemoryStatusEx(ctypes.Structure):
+                    _fields_ = [
+                        ("dwLength", ctypes.c_ulong),
+                        ("dwMemoryLoad", ctypes.c_ulong),
+                        ("ullTotalPhys", ctypes.c_ulonglong),
+                        ("ullAvailPhys", ctypes.c_ulonglong),
+                        ("ullTotalPageFile", ctypes.c_ulonglong),
+                        ("ullAvailPageFile", ctypes.c_ulonglong),
+                        ("ullTotalVirtual", ctypes.c_ulonglong),
+                        ("ullAvailVirtual", ctypes.c_ulonglong),
+                        ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
+                    ]
+
+                stat = _MemoryStatusEx()
+                stat.dwLength = ctypes.sizeof(_MemoryStatusEx)
+                if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
+                    return cls._unknown_memory()
+
+                total_mb = stat.ullTotalPhys / (1024 ** 2)
+                avail_mb = stat.ullAvailPhys / (1024 ** 2)
+
+                return {
+                    "total_mb": round(total_mb, 2),
+                    "used_mb": round(total_mb - avail_mb, 2),
+                    "percent_used": round(float(stat.dwMemoryLoad), 2),
+                    "status": "ok",
+                }
+
+            return cls._unknown_memory()
+        except Exception:
+            return cls._unknown_memory()
+
+    @classmethod
+    def _unknown_memory(cls) -> dict:
+
+        return {"total_mb": None, "used_mb": None, "percent_used": None, "status": "unknown"}
+
+    @classmethod
+    def get_cpu_usage(cls) -> dict:
+        """1-minute load average normalized by core count. os.getloadavg()
+        is POSIX-only (the production VPS target); Windows dev machines
+        report "unknown" rather than a fabricated number.
+        """
+
+        cpu_count = os.cpu_count() or 1
+
+        try:
+            load_1m, _, _ = os.getloadavg()
+            return {
+                "load_average_1m": round(load_1m, 2),
+                "cpu_count": cpu_count,
+                "load_ratio": round(load_1m / cpu_count, 2),
+                "status": "ok",
+            }
+        except (AttributeError, OSError):
+            return {
+                "load_average_1m": None,
+                "cpu_count": cpu_count,
+                "load_ratio": None,
+                "status": "unknown",
+            }
+
+    @classmethod
+    def get_backup_status(cls) -> dict:
+        """Reads the status sentinel scripts/backup.sh writes on every run
+        (BACKUP_ROOT/last_backup_status: "SUCCESS <ts>: <dest>" or
+        "FAILED <ts>: <reason>"). Read-only — this app never triggers a
+        backup itself.
+        """
+
+        try:
+            status_path = Path(settings.BACKUP_ROOT) / "last_backup_status"
+
+            if not status_path.exists():
+                return {"status": "unknown", "last_result": None, "last_backup_at": None, "stale": None}
+
+            content = status_path.read_text(encoding="utf-8", errors="ignore").strip()
+            parts = content.split(" ", 2)
+            result = parts[0] if parts else "UNKNOWN"
+            timestamp_token = parts[1].rstrip(":") if len(parts) > 1 else None
+
+            backup_at_iso: Optional[str] = None
+            stale: Optional[bool] = None
+
+            if timestamp_token:
+                try:
+                    backup_at = datetime.strptime(timestamp_token, _BACKUP_TIMESTAMP_FORMAT)
+                    backup_at_iso = backup_at.isoformat()
+                    stale = (datetime.utcnow() - backup_at) > timedelta(hours=settings.BACKUP_STALE_HOURS)
+                except ValueError:
+                    pass
+
+            status = "healthy" if result == "SUCCESS" else "unhealthy" if result == "FAILED" else "unknown"
+
+            return {
+                "status": status,
+                "last_result": result,
+                "last_backup_at": backup_at_iso,
+                "stale": stale,
+            }
+        except Exception:
+            return {"status": "unknown", "last_result": None, "last_backup_at": None, "stale": None}
+
+    @classmethod
+    def verify_latest_backup_restorable(cls) -> dict:
+        """Restore-verification without restoring: re-runs restore.sh's own
+        checksum pre-flight (SHA256 of every archive against
+        checksums.sha256 in the most recent backup directory) with zero
+        extraction and zero writes to any live file. Never invokes
+        restore.sh.
+        """
+
+        try:
+            root = Path(settings.BACKUP_ROOT)
+
+            if not root.exists():
+                return {"status": "unknown", "verified": None, "backup_dir": None}
+
+            candidates = sorted(
+                (entry for entry in root.iterdir() if entry.is_dir() and entry.name[:4].isdigit()),
+                reverse=True,
+            )
+
+            if not candidates:
+                return {"status": "unknown", "verified": None, "backup_dir": None}
+
+            latest = candidates[0]
+            checksum_file = latest / "checksums.sha256"
+
+            if not checksum_file.exists():
+                return {"status": "unhealthy", "verified": False, "backup_dir": latest.name}
+
+            verified = cls._verify_checksums(latest, checksum_file)
+
+            return {
+                "status": "healthy" if verified else "unhealthy",
+                "verified": verified,
+                "backup_dir": latest.name,
+            }
+        except Exception:
+            return {"status": "unknown", "verified": None, "backup_dir": None}
+
+    @classmethod
+    def _verify_checksums(cls, backup_dir: Path, checksum_file: Path) -> bool:
+
+        lines = checksum_file.read_text(encoding="utf-8", errors="ignore").splitlines()
+
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+
+            parts = line.split(maxsplit=1)
+            if len(parts) != 2:
+                continue
+
+            expected_hash, filename = parts
+            archive_path = backup_dir / filename.lstrip("*")
+
+            if not archive_path.exists():
+                return False
+
+            hasher = hashlib.sha256()
+            with open(archive_path, "rb") as handle:
+                for chunk in iter(lambda: handle.read(_CHECKSUM_READ_CHUNK_BYTES), b""):
+                    hasher.update(chunk)
+
+            if hasher.hexdigest() != expected_hash:
+                return False
+
+        return True

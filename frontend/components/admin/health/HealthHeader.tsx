@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import type { ProductionHealth } from "../../../types/missionControl";
-import { StatusBadge } from "./primitives";
+import type { HealthSummary } from "../../../types/health";
+import { StatusBadge } from "../mission-control/primitives";
 
 function useSecondsAgo(lastUpdatedAt: number | null): number | null {
   const [secondsAgo, setSecondsAgo] = useState<number | null>(null);
@@ -21,26 +21,34 @@ function useSecondsAgo(lastUpdatedAt: number | null): number | null {
   return secondsAgo;
 }
 
-export function CommandHeader({
-  health,
+const STATUS_BADGE: Record<HealthSummary["status"], { tone: "green" | "amber" | "red"; label: string }> = {
+  healthy: { tone: "green", label: "PRODUCTION HEALTHY" },
+  degraded: { tone: "amber", label: "PRODUCTION DEGRADED" },
+  critical: { tone: "red", label: "PRODUCTION CRITICAL" },
+};
+
+export function HealthHeader({
+  summary,
   lastUpdatedAt,
 }: {
-  health: ProductionHealth;
+  summary: HealthSummary;
   lastUpdatedAt: number | null;
 }) {
   const secondsAgo = useSecondsAgo(lastUpdatedAt);
-  const isHealthy = health.status === "ok";
+  const badge = STATUS_BADGE[summary.status];
 
   return (
     <div className="pb-4 border-b border-[#1a1d2e]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold text-green-400 tracking-[0.2em] uppercase">
-            Vedzovi
-          </p>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight mt-0.5">
-            Founder Command Center
-          </h1>
+          <p className="text-xs font-semibold text-green-400 tracking-[0.2em] uppercase">Vedzovi</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight mt-0.5">Production Health</h1>
+          <Link
+            href="/admin/mission-control"
+            className="text-xs text-gray-500 hover:text-gray-300 transition-colors mt-1 inline-block"
+          >
+            ← Back to Mission Control
+          </Link>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -51,24 +59,12 @@ export function CommandHeader({
             </span>
             LIVE
           </span>
-          <StatusBadge
-            tone={isHealthy ? "green" : "red"}
-            label={isHealthy ? "PRODUCTION HEALTHY" : "PRODUCTION DEGRADED"}
-          />
-          {health.maintenance_mode && (
-            <StatusBadge tone="amber" label="MAINTENANCE ON" />
-          )}
-          <Link
-            href="/admin/health"
-            className="text-xs text-gray-500 hover:text-gray-300 border border-[#1e2030] rounded-full px-2.5 py-1 transition-colors"
-          >
-            Health Monitoring →
-          </Link>
+          <StatusBadge tone={badge.tone} label={badge.label} />
         </div>
       </div>
 
       <p className="text-xs text-gray-600 mt-3">
-        {secondsAgo === null ? "Syncing…" : `Updated ${secondsAgo}s ago`} · {health.environment}
+        {secondsAgo === null ? "Syncing…" : `Updated ${secondsAgo}s ago`}
       </p>
     </div>
   );

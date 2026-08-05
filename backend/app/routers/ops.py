@@ -5,6 +5,7 @@ from app.schemas.ops import (
     CapabilitiesResponse,
     HealthResponse,
     JobsResponse,
+    ProductionHealthResponse,
     QueueResponse,
     StorageResponse,
     SummaryResponse,
@@ -69,3 +70,12 @@ def summary(_: None = Depends(verify_ops_api_key)) -> SummaryResponse:
     # CR-036: the preferred endpoint for Founder Pulse to consume.
 
     return OpsService.get_summary()
+
+
+@router.get("/production-health", response_model=ProductionHealthResponse)
+def production_health(_: None = Depends(verify_ops_api_key)) -> ProductionHealthResponse:
+    # VED-P1-002: Production Monitoring health score/status/checks for
+    # Founder Pulse. Additive — does not appear in /capabilities or
+    # /summary (see schemas/ops.py for why).
+
+    return OpsService.get_production_health()

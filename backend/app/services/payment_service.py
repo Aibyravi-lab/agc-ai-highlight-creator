@@ -8,6 +8,7 @@ from razorpay.errors import SignatureVerificationError
 from app.config.config import settings
 from app.services.database_service import DatabaseService
 from app.services.logger_service import LoggerService
+from app.services.monitoring_event_service import MonitoringEventService
 from app.services.subscription_service import SubscriptionService
 
 
@@ -100,6 +101,9 @@ class PaymentService:
                 "Order creation failed",
                 user_id=user_id
             )
+            MonitoringEventService.record_failure(
+                MonitoringEventService.PAYMENT, "order_creation_failed"
+            )
             raise PaymentGatewayError(
                 "Failed to create payment order"
             ) from exc
@@ -148,6 +152,9 @@ class PaymentService:
                 "Payment verification failed: invalid signature",
                 user_id=user_id
             )
+            MonitoringEventService.record_failure(
+                MonitoringEventService.PAYMENT, "invalid_signature"
+            )
             raise InvalidPaymentSignatureError(
                 "Payment signature verification failed"
             ) from exc
@@ -155,6 +162,9 @@ class PaymentService:
             LoggerService.error(
                 "Payment verification failed: gateway error",
                 user_id=user_id
+            )
+            MonitoringEventService.record_failure(
+                MonitoringEventService.PAYMENT, "gateway_error"
             )
             raise PaymentGatewayError(
                 "Failed to verify payment"
@@ -250,6 +260,10 @@ class PaymentService:
                 f"Payment processing failed after verification: "
                 f"payment_id={razorpay_payment_id}",
                 user_id=user_id
+            )
+
+            MonitoringEventService.record_failure(
+                MonitoringEventService.PAYMENT, "processing_failed"
             )
 
             raise PaymentProcessingError(

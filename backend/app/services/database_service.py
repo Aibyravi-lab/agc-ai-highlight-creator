@@ -496,6 +496,102 @@ class DatabaseService:
             """
         )
 
+        # VED-P1-002: Production Monitoring — health score snapshots (for
+        # History: Today/Yesterday/7 Days/30 Days/Trend).
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS health_snapshots (
+
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                created_at TEXT NOT NULL,
+
+                score INTEGER NOT NULL,
+
+                status TEXT NOT NULL,
+
+                checks_json TEXT NOT NULL
+
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_health_snapshots_created_at
+            ON health_snapshots(created_at)
+            """
+        )
+
+        # VED-P1-002: in-app alert engine. One row per raised alert; an open
+        # (resolved_at IS NULL) alert for a given check_id is reused/updated
+        # rather than duplicated on every evaluation cycle, and is closed
+        # automatically once that check recovers to healthy.
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS monitoring_alerts (
+
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                check_id TEXT NOT NULL,
+
+                severity TEXT NOT NULL,
+
+                root_cause TEXT NOT NULL,
+
+                evidence TEXT NOT NULL,
+
+                suggested_fix TEXT NOT NULL,
+
+                created_at TEXT NOT NULL,
+
+                resolved_at TEXT
+
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_monitoring_alerts_check_open
+            ON monitoring_alerts(check_id, resolved_at)
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_monitoring_alerts_created_at
+            ON monitoring_alerts(created_at)
+            """
+        )
+
+        # VED-P1-002: additive failure-event log. Populated by a single
+        # extra call in PaymentService/EmailService's existing except
+        # blocks (MonitoringEventService.record_failure) — never changes
+        # what those services return or raise, only what gets observed.
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS monitoring_events (
+
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                category TEXT NOT NULL,
+
+                detail TEXT NOT NULL,
+
+                created_at TEXT NOT NULL
+
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_monitoring_events_category_created_at
+            ON monitoring_events(category, created_at)
+            """
+        )
+
         connection.commit()
 
         connection.close()

@@ -2,6 +2,7 @@ import resend
 
 from app.config.config import settings
 from app.services.logger_service import LoggerService
+from app.services.monitoring_event_service import MonitoringEventService
 
 
 resend.api_key = settings.RESEND_API_KEY
@@ -58,6 +59,10 @@ class EmailService:
 
             LoggerService.error(
                 f"EMAIL failed error_type={exc.__class__.__name__}"
+            )
+
+            MonitoringEventService.record_failure(
+                MonitoringEventService.EMAIL, exc.__class__.__name__
             )
 
     @classmethod

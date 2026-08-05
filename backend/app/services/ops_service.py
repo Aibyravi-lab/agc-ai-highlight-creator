@@ -265,6 +265,39 @@ class OpsService:
         }
 
     @classmethod
+    def get_production_health(cls) -> dict:
+        # VED-P1-002: read-only Production Health Score for Founder Pulse,
+        # reusing the same ops-key auth and cached-section pattern as every
+        # other method on this class. Deliberately its own endpoint rather
+        # than a new key on get_summary()/CAPABILITIES — both have existing
+        # tests asserting an exact key/feature set (test_ops.py), and this
+        # class's own contract (CR-038) requires additive-only evolution.
+
+        try:
+            return cls._cached("production_health", cls._compute_production_health)
+        except Exception as exc:
+            LoggerService.error(f"ops.production_health failed: {exc}")
+            return {"status": "unavailable"}
+
+    @classmethod
+    def _compute_production_health(cls) -> dict:
+
+        from app.services.health_engine_service import HealthEngineService
+
+        report = HealthEngineService.evaluate()
+
+        return {
+            "status": "ok",
+            "score": report["score"],
+            "production_status": report["status"],
+            "generated_at": report["generated_at"],
+            "checks": {
+                check_id: {"status": entry.get("status"), "message": entry.get("message")}
+                for check_id, entry in report.get("checks", {}).items()
+            },
+        }
+
+    @classmethod
     def get_summary(cls) -> dict:
         # Each section getter below already fails in isolation and never
         # raises, so one failing section (status: "unavailable") can never

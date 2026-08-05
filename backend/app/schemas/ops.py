@@ -1,4 +1,4 @@
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from pydantic import BaseModel, ConfigDict
 
@@ -134,3 +134,23 @@ class SummaryResponse(BaseModel):
     storage: StorageResponse
     users: UsersResponse
     queue: QueueResponse
+
+
+# VED-P1-002: additive-only — SummaryResponse/CapabilitiesResponse above are
+# untouched (test_ops.py asserts their exact key/feature sets), so the new
+# Production Monitoring surface for Founder Pulse is its own endpoint and
+# its own response model.
+class ProductionHealthCheckEntry(BaseModel):
+    status: str
+    message: str
+
+
+class ProductionHealthOk(BaseModel):
+    status: str
+    score: int
+    production_status: str
+    generated_at: str
+    checks: Dict[str, ProductionHealthCheckEntry]
+
+
+ProductionHealthResponse = Union[ProductionHealthOk, OpsUnavailable]

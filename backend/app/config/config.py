@@ -481,4 +481,142 @@ class Settings(BaseSettings):
         )
     )
 
+    # VED-P1-002: Production Monitoring. All thresholds below are additive —
+    # they drive the new health engine only and never alter existing
+    # HealthService/ObservabilityService/DiskSpaceService behavior or
+    # thresholds (AGC-073's _DISK_WARNING_FREE_PERCENT, DiskSpaceService's
+    # upload-guard MIN_FREE_PERCENT, etc. are untouched).
+    HEALTH_SNAPSHOT_INTERVAL_MINUTES: int = int(
+        os.getenv(
+            "HEALTH_SNAPSHOT_INTERVAL_MINUTES",
+            "5"
+        )
+    )
+
+    HEALTH_DISK_WARNING_PERCENT_USED: float = float(
+        os.getenv(
+            "HEALTH_DISK_WARNING_PERCENT_USED",
+            "85.0"
+        )
+    )
+
+    HEALTH_DISK_CRITICAL_PERCENT_USED: float = float(
+        os.getenv(
+            "HEALTH_DISK_CRITICAL_PERCENT_USED",
+            "95.0"
+        )
+    )
+
+    HEALTH_MEMORY_WARNING_PERCENT_USED: float = float(
+        os.getenv(
+            "HEALTH_MEMORY_WARNING_PERCENT_USED",
+            "85.0"
+        )
+    )
+
+    HEALTH_MEMORY_CRITICAL_PERCENT_USED: float = float(
+        os.getenv(
+            "HEALTH_MEMORY_CRITICAL_PERCENT_USED",
+            "95.0"
+        )
+    )
+
+    # Load average (1-minute), normalized by CPU core count. 1.0 == 100% of
+    # available cores fully loaded.
+    HEALTH_CPU_WARNING_LOAD_RATIO: float = float(
+        os.getenv(
+            "HEALTH_CPU_WARNING_LOAD_RATIO",
+            "0.85"
+        )
+    )
+
+    HEALTH_CPU_CRITICAL_LOAD_RATIO: float = float(
+        os.getenv(
+            "HEALTH_CPU_CRITICAL_LOAD_RATIO",
+            "1.0"
+        )
+    )
+
+    HEALTH_QUEUE_WARNING_MULTIPLIER: float = float(
+        os.getenv(
+            "HEALTH_QUEUE_WARNING_MULTIPLIER",
+            "3.0"
+        )
+    )
+
+    # Mirrors MissionControlService.FAILED_JOB_RATE_WARNING_THRESHOLD's
+    # intent for the AI pipeline check, kept as an independently-tunable
+    # value rather than importing that constant, since the two surfaces
+    # (founder growth blockers vs. production health scoring) are allowed to
+    # diverge over time without one accidentally moving the other.
+    HEALTH_AI_PIPELINE_FAILURE_RATE_WARNING: float = float(
+        os.getenv(
+            "HEALTH_AI_PIPELINE_FAILURE_RATE_WARNING",
+            "0.20"
+        )
+    )
+
+    HEALTH_AI_PIPELINE_FAILURE_RATE_CRITICAL: float = float(
+        os.getenv(
+            "HEALTH_AI_PIPELINE_FAILURE_RATE_CRITICAL",
+            "0.50"
+        )
+    )
+
+    # Rolling window (minutes) used to compute payment/email failure rates
+    # from monitoring_events.
+    MONITORING_EVENT_WINDOW_MINUTES: int = int(
+        os.getenv(
+            "MONITORING_EVENT_WINDOW_MINUTES",
+            "60"
+        )
+    )
+
+    HEALTH_PAYMENT_FAILURE_WARNING_COUNT: int = int(
+        os.getenv(
+            "HEALTH_PAYMENT_FAILURE_WARNING_COUNT",
+            "3"
+        )
+    )
+
+    HEALTH_EMAIL_FAILURE_WARNING_COUNT: int = int(
+        os.getenv(
+            "HEALTH_EMAIL_FAILURE_WARNING_COUNT",
+            "5"
+        )
+    )
+
+    # scripts/backup.sh writes its outcome ("SUCCESS <ts>: <dest>" or
+    # "FAILED <ts>: <reason>") to BACKUP_ROOT/last_backup_status. Read-only
+    # from the backend — this app never triggers or writes backups itself.
+    BACKUP_ROOT: str = os.getenv(
+        "BACKUP_ROOT",
+        "/opt/vedzovi-backups"
+    )
+
+    BACKUP_STALE_HOURS: int = int(
+        os.getenv(
+            "BACKUP_STALE_HOURS",
+            "48"
+        )
+    )
+
+    FRONTEND_HEALTH_CHECK_TIMEOUT_SECONDS: int = int(
+        os.getenv(
+            "FRONTEND_HEALTH_CHECK_TIMEOUT_SECONDS",
+            "3"
+        )
+    )
+
+    # Mirrors OPS_CACHE_TTL_SECONDS's role but for HealthEngineService.evaluate()
+    # — bounds how often the (relatively expensive, Mission-Control-calling)
+    # full evaluation actually recomputes, independent of how often the
+    # admin dashboard or scheduler asks for it.
+    HEALTH_ENGINE_CACHE_TTL_SECONDS: int = int(
+        os.getenv(
+            "HEALTH_ENGINE_CACHE_TTL_SECONDS",
+            "15"
+        )
+    )
+
 settings = Settings()
