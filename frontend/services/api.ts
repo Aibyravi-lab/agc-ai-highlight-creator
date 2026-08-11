@@ -7,6 +7,12 @@ import type {
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL?.trim() || "";
 
+// VED-P1-004: large uploads go to a dedicated DNS-only (non-Cloudflare-proxied)
+// hostname so they don't hit the CF Free plan's 100MB proxied-body cap. Falls
+// back to API_BASE so this stays a no-op until the env var is set in production.
+const UPLOAD_API_BASE =
+  process.env.NEXT_PUBLIC_UPLOAD_API_URL?.trim() || API_BASE;
+
 function authHeaders(): Record<string, string> {
   if (typeof window === "undefined") return {};
   const token = localStorage.getItem("agc_token");
@@ -15,11 +21,12 @@ function authHeaders(): Record<string, string> {
 
 async function request(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  base: string = API_BASE
 ) {
   let response: Response;
   try {
-    response = await fetch(`${API_BASE}${endpoint}`, {
+    response = await fetch(`${base}${endpoint}`, {
       cache: "no-store",
       ...options,
     });
@@ -52,14 +59,22 @@ async function request(
   return response.json();
 }
 
-function authedRequest(endpoint: string, options: RequestInit = {}) {
-  return request(endpoint, {
-    ...options,
-    headers: {
-      ...authHeaders(),
-      ...(options.headers as Record<string, string> | undefined),
+function authedRequest(
+  endpoint: string,
+  options: RequestInit = {},
+  base: string = API_BASE
+) {
+  return request(
+    endpoint,
+    {
+      ...options,
+      headers: {
+        ...authHeaders(),
+        ...(options.headers as Record<string, string> | undefined),
+      },
     },
-  });
+    base
+  );
 }
 
 /**
@@ -121,7 +136,9 @@ export function mapJob(backendJob: any): PipelineJob {
   };
 }
 
-const UPLOAD_TIMEOUT_MS = 60000;
+// VED-P1-004: raised from 60s so a 1-2GB upload on a modest uplink doesn't
+// abort mid-transfer; matches the upload hostname's nginx body/proxy timeouts.
+const UPLOAD_TIMEOUT_MS = 30 * 60 * 1000;
 
 export async function uploadVideo(file: File) {
   const formData = new FormData();
@@ -131,11 +148,15 @@ export async function uploadVideo(file: File) {
   const timeoutId = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
 
   try {
-    return await authedRequest("/upload/", {
-      method: "POST",
-      body: formData,
-      signal: controller.signal,
-    });
+    return await authedRequest(
+      "/upload/",
+      {
+        method: "POST",
+        body: formData,
+        signal: controller.signal,
+      },
+      UPLOAD_API_BASE
+    );
   } finally {
     clearTimeout(timeoutId);
   }

@@ -1,7 +1,7 @@
 # AGC Production Deployment Guide
 
 Target: single Ubuntu 22.04 VPS at `45.94.209.92`
-Domain: `vedzovi.com` (frontend) · `api.vedzovi.com` (backend API)
+Domain: `vedzovi.com` (frontend) · `api.vedzovi.com` (backend API) · `upload.vedzovi.com` (large uploads only, VED-P1-004 — see §1 note)
 
 ---
 
@@ -41,15 +41,24 @@ Add the following A records in your DNS provider (TTL 300):
 | `vedzovi.com` | A | `45.94.209.92` |
 | `www.vedzovi.com` | A | `45.94.209.92` |
 | `api.vedzovi.com` | A | `45.94.209.92` |
+| `upload.vedzovi.com` | A | `45.94.209.92` |
 
 Verify propagation before proceeding:
 
 ```bash
 dig +short vedzovi.com
 dig +short api.vedzovi.com
+dig +short upload.vedzovi.com
 ```
 
-Both must return `45.94.209.92`.
+All must return `45.94.209.92`.
+
+**`upload.vedzovi.com` must be DNS-only ("grey-clouded") in Cloudflare, not
+proxied.** Cloudflare's Free plan hard-caps proxied request bodies at 100MB,
+which blocks the 1-2GB gameplay uploads this app accepts — routing uploads
+around the proxy is the fix (VED-P1-004). `vedzovi.com`, `www.vedzovi.com`,
+and `api.vedzovi.com` stay proxied (orange-clouded) as before; this is the
+only hostname that should be grey-clouded.
 
 ---
 
@@ -92,17 +101,36 @@ sudo nginx -t          # must print: syntax is ok / test is successful
 ```bash
 sudo apt install -y certbot python3-certbot-nginx
 
-# Issue cert for all three names in one certificate
+# Issue cert for all names in one certificate
 sudo certbot --nginx \
   -d vedzovi.com \
   -d www.vedzovi.com \
   -d api.vedzovi.com \
+  -d upload.vedzovi.com \
   --agree-tos \
   --email admin@vedzovi.com \
   --no-eff-email
 ```
 
 Certbot will edit the nginx config to point to the new cert paths and reload nginx automatically.
+
+If the cert already exists and you're only adding `upload.vedzovi.com`
+(VED-P1-004), expand it instead of reissuing from scratch:
+
+```bash
+sudo certbot certonly --nginx \
+  -d vedzovi.com \
+  -d www.vedzovi.com \
+  -d api.vedzovi.com \
+  -d upload.vedzovi.com \
+  --expand
+```
+
+`upload.vedzovi.com`'s A record must already resolve to `45.94.209.92`
+(§1) before this runs — certbot's HTTP-01 challenge for the new name will
+fail otherwise. The nginx `agc.conf` upload server block references the
+same `/etc/letsencrypt/live/vedzovi.com/` cert path as the other two
+blocks, so no nginx path changes are needed after expansion.
 
 Verify the cert:
 
@@ -150,6 +178,14 @@ JWT_EXPIRY_HOURS=24
 FRONTEND_URL=https://vedzovi.com
 PRODUCTION_URL=https://vedzovi.com
 WWW_PRODUCTION_URL=https://www.vedzovi.com
+
+# VED-P1-004: raised from the 500MB default to accept 1-2GB gameplay
+# uploads via upload.vedzovi.com. No CORS change accompanies this —
+# CORSMiddleware's allow_origins already includes settings.PRODUCTION_URL
+# (https://vedzovi.com), which is the actual browser Origin on uploads;
+# upload.vedzovi.com is only ever hit as a fetch() target, never as a
+# document origin, so it does not belong in allow_origins.
+MAX_UPLOAD_SIZE_MB=2000
 ```
 
 ### Create the virtual environment and install dependencies
@@ -189,9 +225,14 @@ If you see the `⚠️ WARNING` line, `HTTPS_ENABLED=true` is missing from `.env
 
 ```dotenv
 NEXT_PUBLIC_API_URL=https://api.vedzovi.com
+
+# VED-P1-004: dedicated upload hostname (DNS-only, not Cloudflare-proxied).
+# Only frontend/services/api.ts's uploadVideo() uses this — every other API
+# call still goes through NEXT_PUBLIC_API_URL above.
+NEXT_PUBLIC_UPLOAD_API_URL=https://upload.vedzovi.com
 ```
 
-This is the only value that must change between dev and production. No other API URL is hardcoded in the frontend code.
+`NEXT_PUBLIC_API_URL` is the only value that must change between dev and production for most API calls. `NEXT_PUBLIC_UPLOAD_API_URL` is additive (VED-P1-004) and only affects uploads.
 
 ### Build and start
 
