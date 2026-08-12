@@ -16,6 +16,7 @@ from app.services.logger_service import LoggerService
 from app.services.job_storage_service import JobStorageService
 from app.services.background_job_service import BackgroundJobService
 from app.services.job_service import JobService
+from app.services.cleanup_service import CleanupService
 
 from app.routers.upload import router as upload_router
 from app.routers.analysis import router as analysis_router
@@ -52,6 +53,21 @@ if _reconciled_jobs:
         f"Reconciled {_reconciled_jobs} job(s) "
         "interrupted by a previous server restart"
     )
+
+# VED-P1-010: reconciliation above only fixes DB status/credits for jobs
+# interrupted by a crash/restart — it never touches the filesystem. Without
+# this, orphaned job folders and uploads left by a hard crash only get
+# swept once some later job happens to complete and reach CleanupService.cleanup()
+# in BackgroundJobService.run_pipeline's finally block. Running the same
+# existing sweep here, once, right after reconciliation and before any
+# request/job can be accepted, closes that gap using the same age
+# thresholds and FileSafetyService protections already in production.
+CleanupService.cleanup()
+
+print(
+    "Startup cleanup: swept expired uploads, frames, "
+    "thumbnails, and job artifacts"
+)
 
 JobStorageService.initialize()
 
