@@ -406,6 +406,70 @@ class PipelineService:
         return highlight
 
     @classmethod
+    def _log_highlight_finalization_failure(
+        cls,
+        highlight: dict,
+        error: Exception,
+        job_id: str | None
+    ) -> None:
+        """VED-P1-009: structured, persisted record of a single highlight
+        that failed FFmpeg clip/thumbnail finalization, mirroring the
+        VED-P1-008 quality-gate-rejection logging pattern so a per-highlight
+        failure is observable without failing the whole job.
+        """
+        LoggerService.error(
+            "event=highlight_finalization_failed "
+            f"timestamp={highlight['timestamp']} "
+            f"error={error}",
+            job_id=job_id
+        )
+
+    @classmethod
+    def _finalize_highlights(
+        cls,
+        video_path: str,
+        top_highlights: list,
+        profiler: PipelineProfiler,
+        storage_job_id: str,
+        job_id: str | None
+    ) -> list:
+        """VED-P1-009: finalizes each surviving highlight in isolation so
+        one highlight's FFmpeg/thumbnail failure cannot discard already-
+        finalized siblings or fail the whole job (see F2 in the VED-P1-009
+        resilience audit). A failed highlight is logged and dropped; its
+        siblings continue. If every highlight fails, the caller must still
+        fail the job (existing BackgroundJobService fail_job + credit
+        refund path) rather than complete with an empty reel, so that case
+        raises instead of returning an empty list.
+        """
+        successful_highlights: list = []
+
+        for highlight in top_highlights:
+            try:
+                cls._finalize_highlight_clip(
+                    video_path=video_path,
+                    highlight=highlight,
+                    profiler=profiler,
+                    storage_job_id=storage_job_id
+                )
+            except Exception as finalize_error:
+                cls._log_highlight_finalization_failure(
+                    highlight=highlight,
+                    error=finalize_error,
+                    job_id=job_id
+                )
+                continue
+
+            successful_highlights.append(highlight)
+
+        if not successful_highlights:
+            raise RuntimeError(
+                "All selected highlights failed during clip finalization."
+            )
+
+        return successful_highlights
+
+    @classmethod
     def _merge_and_deduplicate(cls, highlights: list) -> list:
         """Keep highest-scoring highlight when two are within 15 seconds."""
         sorted_highlights = sorted(
@@ -741,13 +805,13 @@ class PipelineService:
             profiler.print_report()
             return empty_metadata
 
-        for highlight in top_highlights:
-            cls._finalize_highlight_clip(
-                video_path=video_path,
-                highlight=highlight,
-                profiler=profiler,
-                storage_job_id=storage_job_id
-            )
+        top_highlights = cls._finalize_highlights(
+            video_path=video_path,
+            top_highlights=top_highlights,
+            profiler=profiler,
+            storage_job_id=storage_job_id,
+            job_id=job_id
+        )
 
         ProgressService.update(
             progress=70,
