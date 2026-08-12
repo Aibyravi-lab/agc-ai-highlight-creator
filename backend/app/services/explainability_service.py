@@ -67,6 +67,7 @@ class ExplainabilityService:
         category: str,
         category_overrides: dict[str, float] | None = None,
         profile_ranking_bonus: dict[str, float] | None = None,
+        quality_gate: dict | None = None,
     ) -> dict:
         cat_mult = cls._get_category_multiplier(action, category_overrides)
         syn_mult = cls._get_synergy_multiplier(clip_score, motion_score, scene_score, audio_score)
@@ -103,4 +104,5 @@ class ExplainabilityService:
             "category_multiplier": round(cat_mult, 4),
             "synergy_multiplier": round(syn_mult, 4),
             "reasons": reasons,
+            "quality_gate": quality_gate,
         }

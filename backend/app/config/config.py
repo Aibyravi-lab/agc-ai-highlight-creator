@@ -311,6 +311,77 @@ class Settings(BaseSettings):
         )
     )
 
+    # VED-P1-007: Highlight Quality Gate — deterministic pre-acceptance
+    # evidence check that runs on raw per-frame signals BEFORE category/
+    # synergy amplification, so a candidate dominated by one signal
+    # (typically scene_score) cannot cross the adaptive threshold purely
+    # through multiplier stacking. See HighlightQualityGate.
+    HIGHLIGHT_QUALITY_GATE_ENABLED: bool = (
+        os.getenv(
+            "HIGHLIGHT_QUALITY_GATE_ENABLED",
+            "true"
+        ).lower() == "true"
+    )
+
+    # ClipService scores are a softmax over ~20-30 profile prompts, not a
+    # raw cosine similarity, so a confident match concentrates well above
+    # the uniform baseline (~1/N). 0.30 sits comfortably below a confident
+    # match (the production false positive measured 0.7317 here) while
+    # still filtering frames with no real semantic relevance.
+    HIGHLIGHT_MIN_CLIP_SCORE: float = float(
+        os.getenv(
+            "HIGHLIGHT_MIN_CLIP_SCORE",
+            "0.30"
+        )
+    )
+
+    # Meaningful-motion floor. Set below SYNERGY_SIGNAL_THRESHOLD (0.50,
+    # the "strong signal" bar used for the synergy bonus) but above the
+    # 0.2232 motion_score measured on the production false-positive frame,
+    # so that exact pattern fails this bar deterministically.
+    HIGHLIGHT_MIN_MOTION_SCORE: float = float(
+        os.getenv(
+            "HIGHLIGHT_MIN_MOTION_SCORE",
+            "0.35"
+        )
+    )
+
+    # Informational only: scene_score never counts toward the gate's
+    # independent-evidence requirement (a high scene-change score alone —
+    # e.g. a camera cut or HUD change — is not evidence of gameplay action).
+    # It is still surfaced in HighlightQualityGate's quality_score for
+    # explainability, at this floor as the "meaningful" bar.
+    HIGHLIGHT_MIN_SCENE_SCORE: float = float(
+        os.getenv(
+            "HIGHLIGHT_MIN_SCENE_SCORE",
+            "0.55"
+        )
+    )
+
+    # Mirrors HIGHLIGHT_MIN_MOTION_SCORE. Never evaluated for silent
+    # videos — AudioService already classifies those upstream via
+    # AUDIO_SILENCE_THRESHOLD_DB, and the gate excludes audio entirely
+    # (neither counted for nor against) rather than treating it as failure.
+    HIGHLIGHT_MIN_AUDIO_SCORE: float = float(
+        os.getenv(
+            "HIGHLIGHT_MIN_AUDIO_SCORE",
+            "0.35"
+        )
+    )
+
+    # Number of independent action-evidence signals (motion, and audio
+    # when the video is not silent) required to accept a candidate. 1 is
+    # the least aggressive setting that still deterministically rejects
+    # the production false positive (which had zero — motion below its
+    # floor, audio excluded as silent), minimizing regression risk against
+    # real gameplay already validated in production (e.g. SnowRunner).
+    HIGHLIGHT_MIN_EVIDENCE_COUNT: int = int(
+        os.getenv(
+            "HIGHLIGHT_MIN_EVIDENCE_COUNT",
+            "1"
+        )
+    )
+
     # AGC-082.2 — absolute noise-floor gate, in dBFS (decibels relative to
     # 16-bit PCM full scale). AudioService.build_audio_map() classifies a
     # decoded audio track as silent when its loudest sample is at or below

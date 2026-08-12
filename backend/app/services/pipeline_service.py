@@ -21,6 +21,7 @@ from app.services.scoring import (
     ScoringOrchestrator,
 )
 from app.services.thumbnail_rank_service import ThumbnailRankService
+from app.services.highlight_quality_gate import HighlightQualityGate
 from app.services.title_service import TitleService
 from app.services.viral_package_service import ViralPackageService
 from app.services.whisper_service import WhisperService
@@ -263,6 +264,16 @@ class PipelineService:
                 category_overrides=profile.category_weight_overrides if profile is not None else None
             )
 
+        with profiler.track("Quality Gate"):
+            quality_gate = HighlightQualityGate.evaluate(
+                clip_score=clip_score,
+                motion_score=motion_score,
+                scene_score=scene_score,
+                audio_score=audio_score,
+                is_silent=is_silent,
+                frame_path=frame_path
+            )
+
         return {
             "clip_result": clip_result,
             "clip_score": clip_score,
@@ -271,6 +282,7 @@ class PipelineService:
             "audio_score": audio_score,
             "duration_score": duration_score,
             "weighted_score": weighted_score,
+            "quality_gate": quality_gate,
         }
 
     @classmethod
@@ -303,6 +315,7 @@ class PipelineService:
             "audio_score": scores["audio_score"],
             "duration_score": scores["duration_score"],
             "duration": clip_duration,
+            "quality_gate": scores["quality_gate"],
             "reason": (
                 "CLIP + Motion + "
                 "Action Weight + "
@@ -513,20 +526,27 @@ class PipelineService:
                     >= 15
                 )
             ):
-                print(
-                    "HIGHLIGHT FOUND:",
-                    frame["timestamp_second"],
-                    weighted_score
-                )
+                if not scores["quality_gate"]["passed"]:
+                    print(
+                        "QUALITY GATE REJECTED:",
+                        frame["timestamp_second"],
+                        scores["quality_gate"]["reason"]
+                    )
+                else:
+                    print(
+                        "HIGHLIGHT FOUND:",
+                        frame["timestamp_second"],
+                        weighted_score
+                    )
 
-                highlight = cls._build_highlight_candidate(
-                    frame=frame,
-                    scores=scores
-                )
-                coarse_highlights.append(highlight)
-                last_highlight_time = float(
-                    frame["timestamp_second"]
-                )
+                    highlight = cls._build_highlight_candidate(
+                        frame=frame,
+                        scores=scores
+                    )
+                    coarse_highlights.append(highlight)
+                    last_highlight_time = float(
+                        frame["timestamp_second"]
+                    )
 
         print(
             f"[PASS 1] Complete: "
@@ -598,16 +618,23 @@ class PipelineService:
                 clip_result["is_highlight"]
                 and weighted_score >= adaptive_threshold
             ):
-                print(
-                    "FINE HIGHLIGHT FOUND:",
-                    frame["timestamp_second"],
-                    weighted_score
-                )
-                highlight = cls._build_highlight_candidate(
-                    frame=frame,
-                    scores=scores
-                )
-                fine_highlights.append(highlight)
+                if not scores["quality_gate"]["passed"]:
+                    print(
+                        "QUALITY GATE REJECTED [FINE]:",
+                        frame["timestamp_second"],
+                        scores["quality_gate"]["reason"]
+                    )
+                else:
+                    print(
+                        "FINE HIGHLIGHT FOUND:",
+                        frame["timestamp_second"],
+                        weighted_score
+                    )
+                    highlight = cls._build_highlight_candidate(
+                        frame=frame,
+                        scores=scores
+                    )
+                    fine_highlights.append(highlight)
 
         print(
             f"[PASS 2] Complete: "
@@ -658,6 +685,7 @@ class PipelineService:
                 category=h.get("category", ""),
                 category_overrides=category_overrides,
                 profile_ranking_bonus=ranking_bonus,
+                quality_gate=h.get("quality_gate"),
             )
 
         if len(top_highlights) == 0:
