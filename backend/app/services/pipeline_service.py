@@ -286,6 +286,40 @@ class PipelineService:
         }
 
     @classmethod
+    def _log_quality_gate_rejection(
+        cls,
+        frame: dict,
+        scores: dict,
+        is_silent: bool,
+        job_id: str | None,
+        scan_pass: str
+    ) -> None:
+        """VED-P1-008: structured, persisted record of a quality-gate
+        rejection. LoggerService.info only accepts a string message (see
+        LoggerService), so the diagnostic fields are encoded as
+        deterministic key=value pairs rather than the bare print() this
+        replaces — that print() reached neither the log file nor the job
+        result, leaving gate rejections unobservable in production.
+        """
+        quality_gate = scores["quality_gate"]
+
+        LoggerService.info(
+            "event=quality_gate_rejected "
+            f"pass={scan_pass} "
+            f"timestamp={frame['timestamp_second']} "
+            f"reason={quality_gate['reason']} "
+            f"evidence_count={quality_gate['evidence_count']} "
+            f"quality_score={quality_gate['quality_score']} "
+            f"clip_score={round(scores['clip_score'], 4)} "
+            f"motion_score={round(scores['motion_score'], 4)} "
+            f"scene_score={round(scores['scene_score'], 4)} "
+            f"audio_score={round(scores['audio_score'], 4)} "
+            f"duration_score={round(scores['duration_score'], 4)} "
+            f"is_silent={is_silent}",
+            job_id=job_id
+        )
+
+    @classmethod
     def _build_highlight_candidate(
         cls,
         frame: dict,
@@ -527,10 +561,12 @@ class PipelineService:
                 )
             ):
                 if not scores["quality_gate"]["passed"]:
-                    print(
-                        "QUALITY GATE REJECTED:",
-                        frame["timestamp_second"],
-                        scores["quality_gate"]["reason"]
+                    cls._log_quality_gate_rejection(
+                        frame=frame,
+                        scores=scores,
+                        is_silent=is_silent_video,
+                        job_id=job_id,
+                        scan_pass="coarse"
                     )
                 else:
                     print(
@@ -619,10 +655,12 @@ class PipelineService:
                 and weighted_score >= adaptive_threshold
             ):
                 if not scores["quality_gate"]["passed"]:
-                    print(
-                        "QUALITY GATE REJECTED [FINE]:",
-                        frame["timestamp_second"],
-                        scores["quality_gate"]["reason"]
+                    cls._log_quality_gate_rejection(
+                        frame=frame,
+                        scores=scores,
+                        is_silent=is_silent_video,
+                        job_id=job_id,
+                        scan_pass="fine"
                     )
                 else:
                     print(
