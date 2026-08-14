@@ -1,3 +1,5 @@
+import time
+
 from concurrent.futures import ThreadPoolExecutor
 
 from app.config.config import settings
@@ -17,6 +19,13 @@ class BackgroundJobService:
     )
 
     _shutting_down = False
+
+    # VED-P1-011: complete_job()'s terminal DB commit can fail transiently
+    # (SQLite contention under concurrent workers, disk I/O) after the
+    # pipeline has already produced a valid result. One short retry lets
+    # a transient failure self-heal without falsely failing a job that
+    # actually succeeded.
+    COMPLETE_JOB_RETRY_DELAY_SECONDS = 2
 
     @classmethod
     def is_accepting_jobs(cls) -> bool:
@@ -87,13 +96,9 @@ class BackgroundJobService:
                 user_id=user_id
             )
 
-            JobService.complete_job(
+            cls._finish_job(
                 job_id=job_id,
                 result=result
-            )
-
-            LoggerService.info(
-                f"Job Completed: {job_id}"
             )
 
         except BaseException as error:
@@ -128,3 +133,88 @@ class BackgroundJobService:
             )
 
             CleanupService.cleanup()
+
+    @classmethod
+    def _finish_job(
+        cls,
+        job_id: str,
+        result: dict
+    ):
+        """VED-P1-011: JobService.complete_job()'s DB commit is the only
+        place jobs.status becomes "completed" — if it raises after the
+        pipeline has already produced a valid result (see the VED-P1-011
+        audit's failure-window trace), the outer run_pipeline except
+        block would otherwise treat a fully successful job as a pipeline
+        failure and refund a credit it already earned. This boundary
+        retries the commit once; if it still fails, a job is only ever
+        left "processing" (recoverable via JobService.
+        reconcile_interrupted_jobs on the next restart) when a valid
+        result.json is confirmed on disk. Deliberately catches Exception,
+        not BaseException — a retry loop must not swallow
+        KeyboardInterrupt/SystemExit.
+        """
+
+        try:
+
+            JobService.complete_job(
+                job_id=job_id,
+                result=result
+            )
+
+            LoggerService.info(
+                f"Job Completed: {job_id}"
+            )
+
+            return
+
+        except Exception as first_error:
+
+            LoggerService.error(
+                "event=complete_job_commit_failed "
+                f"job_id={job_id} attempt=1 error={first_error}",
+                job_id=job_id
+            )
+
+        time.sleep(
+            cls.COMPLETE_JOB_RETRY_DELAY_SECONDS
+        )
+
+        try:
+
+            JobService.complete_job(
+                job_id=job_id,
+                result=result
+            )
+
+            LoggerService.info(
+                f"Job Completed: {job_id}"
+            )
+
+            return
+
+        except Exception as retry_error:
+
+            # Captured before the `except` block exits — Python 3 unbinds
+            # the exception variable itself once the block ends, so it
+            # cannot be referenced below without this.
+            retry_error_message = str(retry_error)
+
+            LoggerService.error(
+                "event=complete_job_commit_failed "
+                f"job_id={job_id} attempt=2 error={retry_error_message}",
+                job_id=job_id
+            )
+
+        if JobService.load_valid_result_artifact(job_id) is not None:
+
+            LoggerService.error(
+                "event=complete_job_commit_failed "
+                f"job_id={job_id} outcome=left_recoverable",
+                job_id=job_id
+            )
+
+            return
+
+        raise RuntimeError(
+            f"Job completion failed: {retry_error_message}"
+        )

@@ -8,6 +8,8 @@ from app.services.database_service import (
 )
 from app.services.auth_service import AuthService
 from app.services.subscription_service import SubscriptionService
+from app.services.job_storage_service import JobStorageService
+from app.services.logger_service import LoggerService
 
 
 class JobService:
@@ -469,7 +471,116 @@ class JobService:
         return False
 
     @classmethod
+    def load_valid_result_artifact(
+        cls,
+        job_id: str
+    ) -> dict | None:
+        """VED-P1-011: the authoritative signal that a job's pipeline
+        actually finished is a valid result.json on disk (written by
+        ResultExportService before the terminal DB commit — see the
+        VED-P1-011 audit's failure-window trace), not progress=100,
+        message="Completed", or the existence of history/project rows.
+        Returns the parsed result payload, or None if no valid completed
+        result exists for this job.
+        """
+
+        result_path = (
+            JobStorageService.job_dir(job_id)
+            / "results"
+            / "result.json"
+        )
+
+        if not result_path.exists():
+            return None
+
+        try:
+
+            with open(
+                result_path,
+                "r",
+                encoding="utf-8"
+            ) as file:
+
+                result = json.load(file)
+
+        except (OSError, json.JSONDecodeError) as error:
+
+            LoggerService.error(
+                "event=result_artifact_invalid "
+                f"job_id={job_id} reason=unreadable error={error}",
+                job_id=job_id
+            )
+
+            return None
+
+        if not isinstance(result, dict):
+
+            LoggerService.error(
+                "event=result_artifact_invalid "
+                f"job_id={job_id} reason=not_an_object",
+                job_id=job_id
+            )
+
+            return None
+
+        required_fields = (
+            "highlights",
+            "final_reel",
+            "stats",
+            "result_json"
+        )
+
+        if not all(field in result for field in required_fields):
+
+            LoggerService.error(
+                "event=result_artifact_invalid "
+                f"job_id={job_id} reason=missing_required_fields",
+                job_id=job_id
+            )
+
+            return None
+
+        if (
+            not isinstance(result.get("highlights"), list)
+            or not result["highlights"]
+        ):
+
+            LoggerService.error(
+                "event=result_artifact_invalid "
+                f"job_id={job_id} reason=empty_highlights",
+                job_id=job_id
+            )
+
+            return None
+
+        if (
+            not isinstance(result.get("final_reel"), str)
+            or not result["final_reel"]
+        ):
+
+            LoggerService.error(
+                "event=result_artifact_invalid "
+                f"job_id={job_id} reason=missing_final_reel",
+                job_id=job_id
+            )
+
+            return None
+
+        return result
+
+    @classmethod
     def reconcile_interrupted_jobs(cls):
+        """VED-P1-011: a job can finish all pipeline work — result.json
+        written, history/project rows persisted, progress=100 — and still
+        be sitting at status='processing' if the process crashes before
+        complete_job()'s commit lands (see the VED-P1-011 audit). Blindly
+        marking every pending/processing job failed-and-refunded on
+        restart (the pre-VED-P1-011 behavior) turned that narrow timing
+        gap into a false failure and a wrongful refund for real,
+        completed work. Each interrupted job is now classified
+        individually: a valid result.json recovers it as completed with
+        no refund; anything else preserves the original fail+refund path.
+        """
 
         connection = (
             DatabaseService.get_connection()
@@ -487,40 +598,48 @@ class JobService:
 
         interrupted = cursor.fetchall()
 
-        cursor.execute(
-            """
-            UPDATE jobs
-            SET
-                status = ?,
-                message = ?,
-                error = ?,
-                completed_at = ?
-            WHERE status IN ('pending', 'processing')
-            """,
-            (
-                "failed",
-                "Failed",
-                "Interrupted by server restart",
-                datetime.utcnow()
-                .isoformat()
-            )
-        )
-
-        reconciled = cursor.rowcount
-
-        connection.commit()
         connection.close()
 
-        # A credit was deducted when each of these jobs started, unless the
-        # owner was an active PRO subscriber (who is never charged a
-        # credit); since the job never reached completed/failed on its own
-        # (server restart cut it off mid-flight), refund the credit it
-        # consumed.
-        for _job_id, user_id in interrupted:
+        reconciled_failed = 0
+
+        for job_id, user_id in interrupted:
+
+            recovered_result = cls.load_valid_result_artifact(
+                job_id
+            )
+
+            if recovered_result is not None:
+
+                cls.complete_job(
+                    job_id=job_id,
+                    result=recovered_result
+                )
+
+                LoggerService.info(
+                    "event=job_recovered_on_reconciliation "
+                    f"job_id={job_id}",
+                    job_id=job_id
+                )
+
+                continue
+
+            cls.fail_job(
+                job_id=job_id,
+                error="Interrupted by server restart"
+            )
+
+            reconciled_failed += 1
+
+            # A credit was deducted when this job started, unless the
+            # owner was an active PRO subscriber (who is never charged a
+            # credit); since the job never reached a completed/recovered
+            # state on its own (server restart cut it off mid-flight with
+            # no completed result to recover), refund the credit it
+            # consumed.
             if user_id is not None and not SubscriptionService.is_pro_active(user_id):
                 AuthService.refund_credit(user_id)
 
-        return reconciled
+        return reconciled_failed
 
     @classmethod
     def get_running_job_count(
