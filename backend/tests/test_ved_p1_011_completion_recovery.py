@@ -217,6 +217,60 @@ class ReconciliationRecoveryTests(unittest.TestCase):
         self.mock_refund.assert_called_once_with(2)
         self.assertEqual(reconciled_failed, 1)
 
+    def test_persistent_complete_job_failure_during_recovery_does_not_crash_or_refund(self):
+        """VED-P1-011 CTO review: complete_job() failing while recovering
+        a verified-valid job during reconciliation must never propagate
+        an uncaught exception (main.py calls reconcile_interrupted_jobs
+        at import time with no try/except — an uncaught exception here
+        would crash the entire application startup), must never refund,
+        and must never mark the job failed — it stays "processing" so a
+        future reconciliation pass can retry it.
+        """
+        _write_result_json("job-d", VALID_RESULT_PAYLOAD)
+        _insert_job("job-d", user_id=8, status="processing")
+
+        with patch(
+            "app.services.job_service.JobService.complete_job",
+            side_effect=sqlite3.OperationalError("database is locked"),
+        ) as mock_complete_job, patch("app.services.job_service.LoggerService"):
+            reconciled_failed = JobService.reconcile_interrupted_jobs()
+
+        self.assertEqual(reconciled_failed, 0)
+        self.assertEqual(mock_complete_job.call_count, 2)
+        self.mock_refund.assert_not_called()
+
+        job = JobService.get_job("job-d")
+        self.assertEqual(job["status"], "processing")
+
+    def test_transient_complete_job_failure_during_recovery_still_recovers(self):
+        """A first-attempt commit failure that succeeds on retry must
+        still fully recover the job within the same reconciliation
+        pass."""
+        _write_result_json("job-e", VALID_RESULT_PAYLOAD)
+        _insert_job("job-e", user_id=9, status="processing")
+
+        real_complete_job = JobService.complete_job.__func__
+        call_count = {"n": 0}
+
+        def flaky_complete_job(cls, job_id, result):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise sqlite3.OperationalError("database is locked")
+            return real_complete_job(cls, job_id=job_id, result=result)
+
+        with patch(
+            "app.services.job_service.JobService.complete_job",
+            classmethod(flaky_complete_job),
+        ), patch("app.services.job_service.LoggerService"):
+            reconciled_failed = JobService.reconcile_interrupted_jobs()
+
+        self.assertEqual(reconciled_failed, 0)
+        self.mock_refund.assert_not_called()
+
+        job = JobService.get_job("job-e")
+        self.assertEqual(job["status"], "completed")
+        self.assertEqual(job["result"], VALID_RESULT_PAYLOAD)
+
     def test_invalid_result_is_not_treated_as_recovery(self):
         _write_result_json("job-c", "{corrupt")
         _insert_job("job-c", user_id=3, status="processing")

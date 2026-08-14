@@ -569,6 +569,65 @@ class JobService:
         return result
 
     @classmethod
+    def _commit_recovered_job(
+        cls,
+        job_id: str,
+        result: dict
+    ) -> bool:
+        """VED-P1-011 CTO review: complete_job()'s commit can itself fail
+        transiently (SQLite contention, disk I/O) while recovering a job
+        during startup reconciliation, after its result has already been
+        verified valid. Letting that exception propagate out of
+        reconcile_interrupted_jobs (as it did prior to this fix) would
+        crash the entire application startup over a single job's
+        recoverable commit failure — a worse outage than the false
+        failure this feature closes. One immediate retry lets a
+        transient failure self-heal within the same reconciliation pass;
+        if it still fails, the job is left "processing" rather than
+        failed or refunded — the next reconciliation pass (a future
+        restart) will find the same valid result.json and retry it.
+        Deliberately catches Exception, not BaseException.
+        """
+
+        try:
+
+            cls.complete_job(
+                job_id=job_id,
+                result=result
+            )
+
+            return True
+
+        except Exception as first_error:
+
+            LoggerService.error(
+                "event=complete_job_commit_failed "
+                f"job_id={job_id} attempt=1 error={first_error} "
+                "context=reconciliation",
+                job_id=job_id
+            )
+
+        try:
+
+            cls.complete_job(
+                job_id=job_id,
+                result=result
+            )
+
+            return True
+
+        except Exception as retry_error:
+
+            LoggerService.error(
+                "event=complete_job_commit_failed "
+                f"job_id={job_id} attempt=2 error={retry_error} "
+                "context=reconciliation outcome=left_recoverable",
+                job_id=job_id
+            )
+
+            return False
+
+    @classmethod
     def reconcile_interrupted_jobs(cls):
         """VED-P1-011: a job can finish all pipeline work — result.json
         written, history/project rows persisted, progress=100 — and still
@@ -610,17 +669,21 @@ class JobService:
 
             if recovered_result is not None:
 
-                cls.complete_job(
+                if cls._commit_recovered_job(
                     job_id=job_id,
                     result=recovered_result
-                )
+                ):
 
-                LoggerService.info(
-                    "event=job_recovered_on_reconciliation "
-                    f"job_id={job_id}",
-                    job_id=job_id
-                )
+                    LoggerService.info(
+                        "event=job_recovered_on_reconciliation "
+                        f"job_id={job_id}",
+                        job_id=job_id
+                    )
 
+                # Whether the commit succeeded or is still pending after
+                # a failed retry, this job is never failed or refunded
+                # here — a confirmed-valid result must never be treated
+                # as a genuine pipeline failure.
                 continue
 
             cls.fail_job(
