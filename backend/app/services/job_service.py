@@ -10,6 +10,8 @@ from app.services.auth_service import AuthService
 from app.services.subscription_service import SubscriptionService
 from app.services.job_storage_service import JobStorageService
 from app.services.logger_service import LoggerService
+from app.services.history_service import HistoryService
+from app.services.project_service import ProjectService
 
 
 class JobService:
@@ -628,6 +630,125 @@ class JobService:
             return False
 
     @classmethod
+    def _register_recovered_artifacts(
+        cls,
+        job_id: str,
+        user_id: int | None,
+        result: dict
+    ) -> None:
+        """VED-P1-012: a job recovered via reconcile_interrupted_jobs is
+        marked completed from its on-disk result.json alone (see
+        load_valid_result_artifact) — but that snapshot predates
+        HistoryService.add_history/ProjectService.create_project in the
+        normal pipeline (see pipeline_service.py's post-export
+        registration step), so a recovered job never gets those rows.
+        Without this, the job is "completed" but permanently invisible
+        in the user's History/Projects lists. This is called only after
+        _commit_recovered_job has confirmed the job row itself is
+        completed, and is fully isolated: any failure here is logged and
+        swallowed — it must never re-fail a job that already succeeded,
+        never trigger a refund, and never crash startup reconciliation.
+
+        The original uploaded filename is not recoverable from either
+        the jobs table or result.json (neither persists it), so
+        recovered entries use the deterministic fallback
+        "Recovered Job <job_id>" (CTO MVP decision, VED-P1-012) —
+        intentionally not a database migration.
+        """
+
+        if user_id is None:
+            return
+
+        fallback_name = f"Recovered Job {job_id}"
+
+        try:
+
+            connection = (
+                DatabaseService.get_connection()
+            )
+
+            cursor = connection.cursor()
+
+            cursor.execute(
+                """
+                SELECT id
+                FROM projects
+                WHERE job_id = ?
+                """,
+                (job_id,)
+            )
+
+            existing_project = cursor.fetchone()
+
+            connection.close()
+
+            if existing_project is None:
+
+                ProjectService.create_project(
+                    user_id=user_id,
+                    job_id=job_id,
+                    original_video_name=fallback_name,
+                    thumbnail_path=result.get("thumbnail"),
+                    horizontal_reel_path=result.get("final_reel"),
+                    vertical_reel_path=result.get("vertical_reel") or None,
+                    metadata_json_path=result.get("result_json") or None
+                )
+
+            # VED-P1-012: the history table has no job_id column, so it
+            # cannot be matched back to a specific job the way projects
+            # can — this is a best-effort application-level guard, not a
+            # schema-guaranteed one. It relies on the fallback name above
+            # being deterministic per job_id (and not colliding with a
+            # real uploaded filename) to avoid duplicate rows across
+            # repeated registration attempts.
+            connection = (
+                DatabaseService.get_connection()
+            )
+
+            cursor = connection.cursor()
+
+            cursor.execute(
+                """
+                SELECT 1
+                FROM history
+                WHERE user_id = ?
+                  AND video_name = ?
+                """,
+                (user_id, fallback_name)
+            )
+
+            existing_history = cursor.fetchone()
+
+            connection.close()
+
+            if existing_history is None:
+
+                HistoryService.add_history(
+                    video_name=fallback_name,
+                    reel_path=result.get("final_reel"),
+                    highlights_count=len(
+                        result.get("highlights", [])
+                    ),
+                    user_id=user_id
+                )
+
+            LoggerService.info(
+                "event=recovered_artifacts_registered "
+                f"job_id={job_id}",
+                job_id=job_id
+            )
+
+        except Exception as registration_error:
+
+            LoggerService.error(
+                "event=recovered_artifact_registration_failed "
+                f"job_id={job_id} error={registration_error}",
+                job_id=job_id
+            )
+
+            return
+
+    @classmethod
     def reconcile_interrupted_jobs(cls):
         """VED-P1-011: a job can finish all pipeline work — result.json
         written, history/project rows persisted, progress=100 — and still
@@ -678,6 +799,17 @@ class JobService:
                         "event=job_recovered_on_reconciliation "
                         f"job_id={job_id}",
                         job_id=job_id
+                    )
+
+                    # VED-P1-012: only register History/Project rows once
+                    # the job row itself is confirmed completed — never
+                    # while the commit is still pending a retry, so this
+                    # is naturally re-attempted on a future reconciliation
+                    # pass if the job wasn't committed yet this time.
+                    cls._register_recovered_artifacts(
+                        job_id=job_id,
+                        user_id=user_id,
+                        result=recovered_result
                     )
 
                 # Whether the commit succeeded or is still pending after
@@ -753,8 +885,14 @@ class JobService:
                     value.replace("\\", "/")
                 )
 
+        # VED-P1-012: a normally-completed job's stored result has
+        # "all_highlights"; a job recovered from result.json (see
+        # load_valid_result_artifact) only has "highlights" — both must
+        # authorize their own highlight clip/thumbnail paths.
         for highlight in (
-            result.get("all_highlights") or []
+            result.get("all_highlights")
+            or result.get("highlights")
+            or []
         ):
             for key in (
                 "clip_path",
