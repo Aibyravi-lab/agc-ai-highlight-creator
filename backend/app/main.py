@@ -1,7 +1,4 @@
-import os
 import uuid
-
-import torch
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -71,21 +68,14 @@ print(
 
 JobStorageService.initialize()
 
-# VED-P1-003: torch defaults its intra-op thread pool to every logical
-# core, sized for one inference call at a time. Now that CLIP/Whisper
-# inference no longer serializes behind a global lock (see clip_service.py,
-# whisper_service.py), up to MAX_CONCURRENT_JOBS pipeline-worker threads can
-# call into torch at once; left at the default, they oversubscribe the CPU
-# and fight each other for the same cores instead of running in parallel.
-# Capping per-call threads to roughly cores / MAX_CONCURRENT_JOBS lets that
-# many jobs' inference calls actually overlap. Deterministic for a fixed
-# thread count; does not change model weights, scoring logic, or outputs.
-torch.set_num_threads(
-    max(
-        1,
-        (os.cpu_count() or 4) // settings.MAX_CONCURRENT_JOBS
-    )
-)
+# VED-P1-018-B: `import torch` alone costs ~2.3s (see the P1-018-B
+# profiling report) and used to run unconditionally here just to call
+# torch.set_num_threads() below -- forcing that cost onto every process
+# start before FastAPI() is even constructed or the socket is bound. The
+# thread-count configuration (originally VED-P1-003) now runs lazily, once,
+# at the first real CLIP inference call -- see
+# PipelineService._ensure_torch_configured() in pipeline_service.py -- the
+# earliest point torch is actually needed. Behavior/value are unchanged.
 
 FFmpegService.validate()
 

@@ -1,5 +1,4 @@
 from fastapi import APIRouter, HTTPException, Depends
-from app.services.vision_service import VisionService
 from app.services.logger_service import LoggerService
 from app.dependencies import get_current_user
 
@@ -17,6 +16,13 @@ def analyze_frame(
 ):
 
     try:
+        # VED-P1-018-B: deferred -- VisionService imports transformers/cv2
+        # at module scope; importing it here keeps it out of app.main's
+        # import path (see the P1-018-B profiling report). The route
+        # registers eagerly (needed for /health etc. to come up); the
+        # first real /vision/analyze call pays this import once.
+        from app.services.vision_service import VisionService
+
         result = VisionService.analyze_frame(image_path)
 
         return {

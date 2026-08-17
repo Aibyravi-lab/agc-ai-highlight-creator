@@ -1,3 +1,4 @@
+import os
 import time
 import numpy as np
 from pathlib import Path
@@ -7,7 +8,6 @@ from app.services.cleanup_service import CleanupService
 from app.services.result_export_service import ResultExportService
 from app.services.history_service import HistoryService
 from app.services.frame_service import FrameService
-from app.services.clip_service import ClipService
 from app.services.editor_service import EditorService
 from app.services.reel_service import ReelService
 from app.services.metadata_service import build_metadata
@@ -24,7 +24,6 @@ from app.services.thumbnail_rank_service import ThumbnailRankService
 from app.services.highlight_quality_gate import HighlightQualityGate
 from app.services.title_service import TitleService
 from app.services.viral_package_service import ViralPackageService
-from app.services.whisper_service import WhisperService
 from app.services.caption_service import CaptionService
 from app.services.audio_service import AudioService
 from app.services.progress_service import ProgressService
@@ -39,7 +38,62 @@ from app.services.explainability_service import ExplainabilityService
 from app.services.profiler_service import PipelineProfiler
 
 
+# VED-P1-018-B: ClipService and WhisperService import torch/transformers/
+# whisper at module scope -- a multi-second cost (see the P1-018-B
+# profiling report) that used to load unconditionally the instant
+# pipeline_service was imported, via background_job_service's eager import
+# at app.main module scope, long before FastAPI() was constructed or the
+# socket bound. Both are now imported lazily, at the first real call site
+# that needs them (_score_single_frame, _run_pipeline) instead of here.
+#
+# This module-level __getattr__ (PEP 562) exists only so
+# `pipeline_service.ClipService` / `.WhisperService` still resolve for
+# existing test mocking (`patch("app.services.pipeline_service.ClipService...")`,
+# `patch("app.services.pipeline_service.WhisperService...")`) without
+# reintroducing the eager import -- it is never used by the pipeline's own
+# code, which imports both locally at their call sites instead.
+def __getattr__(name: str):
+
+    if name == "ClipService":
+        from app.services.clip_service import ClipService
+        return ClipService
+
+    if name == "WhisperService":
+        from app.services.whisper_service import WhisperService
+        return WhisperService
+
+    raise AttributeError(
+        f"module {__name__!r} has no attribute {name!r}"
+    )
+
+
 class PipelineService:
+
+    # VED-P1-018-B: guards torch.set_num_threads() (originally VED-P1-003,
+    # moved out of app.main) so it configures the process-wide intra-op
+    # thread pool exactly once, at the first real CLIP inference call --
+    # the earliest point torch is actually imported. Concurrent pipeline-
+    # worker threads may race this check on the very first job(s); that's
+    # harmless since every racer computes the same deterministic value and
+    # torch.set_num_threads() is safe to call multiple times.
+    _torch_configured = False
+
+    @classmethod
+    def _ensure_torch_configured(cls) -> None:
+
+        if cls._torch_configured:
+            return
+
+        import torch
+
+        torch.set_num_threads(
+            max(
+                1,
+                (os.cpu_count() or 4) // settings.MAX_CONCURRENT_JOBS
+            )
+        )
+
+        cls._torch_configured = True
 
     @classmethod
     def process_video(
@@ -215,6 +269,10 @@ class PipelineService:
             f"{frames_location}/"
             f"{frame['frame_name']}"
         )
+
+        cls._ensure_torch_configured()
+
+        from app.services.clip_service import ClipService
 
         with profiler.track("CLIP Detection"):
             clip_result = ClipService.get_highlight_result(
@@ -889,6 +947,8 @@ class PipelineService:
         print(
             "Step 4: Transcribing audio..."
         )
+
+        from app.services.whisper_service import WhisperService
 
         transcription = (
             WhisperService.transcribe_video(
