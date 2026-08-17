@@ -1,3 +1,5 @@
+import threading
+
 from transformers import BlipProcessor, BlipForConditionalGeneration
 from PIL import Image
 import cv2
@@ -5,13 +7,32 @@ import cv2
 
 class VisionService:
 
-    processor = BlipProcessor.from_pretrained(
-        "Salesforce/blip-image-captioning-base"
-    )
+    # VED-P1-018-A: BLIP used to load eagerly as class attributes,
+    # evaluated the instant this module was imported -- before FastAPI
+    # was constructed or the socket was bound, adding a live Hugging Face
+    # Hub round-trip to every backend restart. Lazily loading per thread,
+    # mirroring the ClipService/WhisperService pattern (VED-P1-003), moves
+    # that cost to the first real inference call instead of the import
+    # path.
+    _thread_local = threading.local()
 
-    model = BlipForConditionalGeneration.from_pretrained(
-        "Salesforce/blip-image-captioning-base"
-    )
+    @classmethod
+    def _get_model_and_processor(cls):
+
+        if not hasattr(cls._thread_local, "model"):
+
+            cls._thread_local.model = BlipForConditionalGeneration.from_pretrained(
+                "Salesforce/blip-image-captioning-base"
+            )
+
+            cls._thread_local.processor = BlipProcessor.from_pretrained(
+                "Salesforce/blip-image-captioning-base"
+            )
+
+        return (
+            cls._thread_local.model,
+            cls._thread_local.processor
+        )
 
     @classmethod
     def analyze_frame(cls, image_path: str):
@@ -20,17 +41,19 @@ class VisionService:
             image_path
         ).convert("RGB")
 
-        inputs = cls.processor(
+        model, processor = cls._get_model_and_processor()
+
+        inputs = processor(
             image,
             return_tensors="pt"
         )
 
-        output = cls.model.generate(
+        output = model.generate(
             **inputs,
             max_new_tokens=30
         )
 
-        caption = cls.processor.decode(
+        caption = processor.decode(
             output[0],
             skip_special_tokens=True
         )
