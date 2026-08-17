@@ -2,6 +2,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from app.config.config import settings
 from app.services.file_safety_service import FileSafetyService
+from app.services.job_service import JobService
 
 
 class CleanupService:
@@ -101,11 +102,27 @@ class CleanupService:
         if not jobs_dir.exists():
             return
 
-        cutoff = (
+        # VED-P1-017: filesystem mtime cutoff, for folders with no jobs
+        # row (genuinely orphaned) -- unchanged from the pre-existing
+        # behavior.
+        fs_cutoff = (
             datetime.now()
             - timedelta(
                 hours=settings.TEMP_CLEANUP_HOURS
             )
+        )
+
+        # DB-timestamp cutoff, comparable against completed_at/created_at
+        # (stored as datetime.utcnow().isoformat() by JobService).
+        db_cutoff = (
+            datetime.utcnow()
+            - timedelta(
+                hours=settings.TEMP_CLEANUP_HOURS
+            )
+        )
+
+        reference_times = (
+            JobService.get_job_retention_reference_times()
         )
 
         for job_folder in jobs_dir.iterdir():
@@ -113,11 +130,31 @@ class CleanupService:
             if not job_folder.is_dir():
                 continue
 
+            reference_at = reference_times.get(
+                job_folder.name
+            )
+
+            if reference_at is not None:
+
+                try:
+                    reference_dt = datetime.fromisoformat(
+                        reference_at
+                    )
+                except (TypeError, ValueError):
+                    reference_dt = None
+
+                if reference_dt is not None:
+
+                    if reference_dt < db_cutoff:
+                        FileSafetyService.safe_delete_file(job_folder)
+
+                    continue
+
             modified = datetime.fromtimestamp(
                 job_folder.stat().st_mtime
             )
 
-            if modified < cutoff:
+            if modified < fs_cutoff:
 
                 FileSafetyService.safe_delete_file(job_folder)
 

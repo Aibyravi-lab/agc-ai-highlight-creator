@@ -309,6 +309,41 @@ class JobService:
         connection.close()
 
     @classmethod
+    def get_job_retention_reference_times(cls) -> dict:
+        """VED-P1-017: cleanup_old_jobs (CleanupService) needs a per-job
+        staleness signal that isn't filesystem mtime. A recovered job's
+        on-disk artifacts were last written before whatever crash
+        interrupted it, so their mtime can already be past the cleanup
+        cutoff the moment reconcile_interrupted_jobs (VED-P1-011/012)
+        finishes registering it -- mtime-based cleanup would delete those
+        artifacts out from under the Project/History rows just created.
+        completed_at (set by complete_job/fail_job at the moment the DB
+        write happens, i.e. recovery time for a recovered job) is the
+        correct clock; created_at is the fallback for jobs that never
+        reached a terminal state. One bulk query so cleanup doesn't pay a
+        per-folder DB round trip.
+        """
+
+        connection = (
+            DatabaseService.get_connection()
+        )
+
+        cursor = connection.cursor()
+
+        cursor.execute(
+            "SELECT job_id, created_at, completed_at FROM jobs"
+        )
+
+        rows = cursor.fetchall()
+
+        connection.close()
+
+        return {
+            row[0]: row[2] or row[1]
+            for row in rows
+        }
+
+    @classmethod
     def get_job_stats(
         cls,
         user_id: int
