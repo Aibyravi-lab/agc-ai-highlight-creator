@@ -245,33 +245,27 @@ class PaymentService:
     ) -> dict:
         # The razorpay_payment_id UNIQUE constraint is the actual replay
         # guard: it makes the INSERT below the single point where a
-        # concurrent duplicate is guaranteed to lose.
+        # concurrent duplicate is guaranteed to lose. A payments row that
+        # already exists for this razorpay_payment_id is resolved by
+        # _resolve_existing_payment: an idempotent success if it's the same
+        # (user, order, plan) — e.g. the webhook and browser paths racing
+        # for the same real payment — or a rejected DuplicatePaymentError
+        # if any of those differ, which would mean someone is trying to
+        # attach an already-captured payment_id to a different user/order.
+
+        existing = cls._find_payment_by_payment_id(razorpay_payment_id)
+
+        if existing is not None:
+            return cls._resolve_existing_payment(
+                existing, user_id, razorpay_order_id, plan,
+                razorpay_payment_id
+            )
 
         now = datetime.utcnow().isoformat()
 
         connection = DatabaseService.get_connection()
 
         cursor = connection.cursor()
-
-        cursor.execute(
-            "SELECT id FROM payments WHERE razorpay_payment_id = ?",
-            (razorpay_payment_id,)
-        )
-
-        already_processed = cursor.fetchone() is not None
-
-        if already_processed:
-            connection.close()
-
-            LoggerService.info(
-                f"Duplicate payment verification rejected: "
-                f"payment_id={razorpay_payment_id}",
-                user_id=user_id
-            )
-
-            raise DuplicatePaymentError(
-                "Payment has already been processed."
-            )
 
         try:
             cursor.execute(
@@ -314,20 +308,43 @@ class PaymentService:
             connection.commit()
 
         except sqlite3.IntegrityError:
+            # Lost a concurrent race for this exact razorpay_payment_id —
+            # the winning writer's row exists now. Resolve against it the
+            # same way a pre-existing row would have been resolved above,
+            # instead of unconditionally rejecting.
             connection.rollback()
+            connection.close()
 
-            LoggerService.info(
-                f"Duplicate payment verification rejected: "
-                f"payment_id={razorpay_payment_id}",
-                user_id=user_id
+            winner = cls._find_payment_by_payment_id(razorpay_payment_id)
+
+            if winner is None:
+                # The IntegrityError wasn't the razorpay_payment_id UNIQUE
+                # constraint after all (e.g. a foreign-key violation) — no
+                # row was ever written, so there is nothing to resolve
+                # against. Treat this as a genuine processing failure
+                # instead of assuming a winner exists.
+                LoggerService.error(
+                    f"Payment processing failed after verification: "
+                    f"payment_id={razorpay_payment_id}",
+                    user_id=user_id
+                )
+
+                MonitoringEventService.record_failure(
+                    MonitoringEventService.PAYMENT, "processing_failed"
+                )
+
+                raise PaymentProcessingError(
+                    "Failed to process payment"
+                )
+
+            return cls._resolve_existing_payment(
+                winner, user_id, razorpay_order_id, plan,
+                razorpay_payment_id
             )
-
-            raise DuplicatePaymentError(
-                "Payment has already been processed."
-            ) from None
 
         except Exception as exc:
             connection.rollback()
+            connection.close()
 
             LoggerService.error(
                 f"Payment processing failed after verification: "
@@ -343,10 +360,109 @@ class PaymentService:
                 "Failed to process payment"
             ) from exc
 
+        connection.close()
+
+        return SubscriptionService.get_by_user_id(user_id)
+
+    @classmethod
+    def _find_payment_by_payment_id(
+        cls, razorpay_payment_id: str
+    ) -> Optional[dict]:
+
+        connection = DatabaseService.get_connection()
+        connection.row_factory = cls._row_factory
+
+        try:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                SELECT user_id, razorpay_order_id, plan
+                FROM payments
+                WHERE razorpay_payment_id = ?
+                """,
+                (razorpay_payment_id,)
+            )
+            return cursor.fetchone()
         finally:
             connection.close()
 
+    @classmethod
+    def _resolve_existing_payment(
+        cls,
+        existing: dict,
+        user_id: int,
+        razorpay_order_id: str,
+        plan: str,
+        razorpay_payment_id: str,
+    ) -> dict:
+        # A payments row for this razorpay_payment_id already exists.
+        # Same (user, order, plan): an idempotent retry of a payment that
+        # was already fully processed elsewhere (webhook, browser, or
+        # reconciliation) — return the current entitlement without a
+        # second write. Any mismatch is treated as an attempt to attach an
+        # already-captured payment_id to a different user/order/plan and
+        # rejected, exactly as a straight duplicate always was.
+        same_payment = (
+            existing["user_id"] == user_id
+            and existing["razorpay_order_id"] == razorpay_order_id
+            and existing["plan"] == plan
+        )
+
+        if not same_payment:
+            LoggerService.info(
+                f"Duplicate payment verification rejected "
+                f"(user/order/plan mismatch): "
+                f"payment_id={razorpay_payment_id}",
+                user_id=user_id
+            )
+
+            MonitoringEventService.record_failure(
+                MonitoringEventService.PAYMENT, "duplicate_mismatch"
+            )
+
+            raise DuplicatePaymentError(
+                "Payment has already been processed."
+            )
+
+        LoggerService.info(
+            f"Idempotent payment verification: payment_id="
+            f"{razorpay_payment_id} already processed for this exact "
+            f"payment, no new entitlement granted",
+            user_id=user_id
+        )
+
+        cls._ensure_pending_order_resolved(razorpay_order_id)
+
         return SubscriptionService.get_by_user_id(user_id)
+
+    @classmethod
+    def _ensure_pending_order_resolved(cls, razorpay_order_id: str) -> None:
+        # Best-effort, same non-fatal-on-failure contract as
+        # _record_pending_order. The row is usually already RESOLVED (the
+        # common case) or absent entirely (predates this feature) — both
+        # are no-ops.
+
+        now = datetime.utcnow().isoformat()
+
+        try:
+            connection = DatabaseService.get_connection()
+            try:
+                connection.execute(
+                    """
+                    UPDATE pending_orders
+                    SET status = 'RESOLVED', updated_at = ?
+                    WHERE razorpay_order_id = ? AND status != 'RESOLVED'
+                    """,
+                    (now, razorpay_order_id)
+                )
+                connection.commit()
+            finally:
+                connection.close()
+        except Exception as exc:
+            LoggerService.error(
+                f"Failed to resolve pending order on idempotent retry "
+                f"order_id={razorpay_order_id}: {exc}"
+            )
 
     # ── REVENUE-004: pending-order lookups (webhook + reconciliation) ──
 
