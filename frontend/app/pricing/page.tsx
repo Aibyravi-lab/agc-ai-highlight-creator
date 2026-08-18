@@ -225,7 +225,7 @@ export default function PricingPage() {
   return (
     <InfoPageShell
       title="Pricing"
-      subtitle="Simple and transparent, currently free during Public Beta."
+      subtitle="Start free with 3 AI Highlights, then upgrade to Pro for ₹299/month whenever you need more."
       backHref={isAuthenticated ? "/dashboard" : "/"}
       backLabel={isAuthenticated ? "← Back to Dashboard" : "← Back to Home"}
     >
