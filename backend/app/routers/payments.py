@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+import json
+
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.config.config import settings
@@ -6,6 +8,7 @@ from app.dependencies import get_current_user
 from app.services.payment_service import (
     DuplicatePaymentError,
     InvalidPaymentSignatureError,
+    InvalidWebhookSignatureError,
     PaymentGatewayError,
     PaymentNotConfiguredError,
     PaymentProcessingError,
@@ -152,3 +155,52 @@ def verify_payment(
         "plan": subscription["plan"],
         "status": subscription["status"],
     }
+
+
+@router.post("/webhook")
+async def razorpay_webhook(request: Request):
+    # REVENUE-004: server-to-server callback from Razorpay — it cannot
+    # carry a Vedzovi JWT, so authenticity rests entirely on the HMAC
+    # signature below, verified over the exact raw bytes Razorpay sent
+    # (Razorpay's own docs: do not parse/re-cast the body before verifying).
+
+    raw_body = await request.body()
+    signature = request.headers.get("X-Razorpay-Signature", "")
+    event_id = request.headers.get("X-Razorpay-Event-Id", "")
+
+    try:
+        PaymentService.verify_webhook_signature(raw_body, signature)
+
+    except InvalidWebhookSignatureError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail=str(exc)
+        ) from exc
+
+    except PaymentNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc)
+        ) from exc
+
+    try:
+        payload = json.loads(raw_body)
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid webhook payload"
+        ) from exc
+
+    try:
+        PaymentService.handle_webhook_event(payload, event_id)
+
+    except PaymentProcessingError as exc:
+        # Transient processing failure (e.g. a busy DB) — a 5xx lets
+        # Razorpay's own retry-with-backoff mechanism recover it.
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc)
+        ) from exc
+
+    return {"status": "ok"}

@@ -1,6 +1,7 @@
 import sqlite3
 import time
 from datetime import datetime
+from typing import Optional
 
 import razorpay
 from razorpay.errors import SignatureVerificationError
@@ -28,6 +29,10 @@ class InvalidPaymentSignatureError(Exception):
     pass
 
 
+class InvalidWebhookSignatureError(Exception):
+    pass
+
+
 class DuplicatePaymentError(Exception):
     pass
 
@@ -47,6 +52,22 @@ class PaymentService:
             "interval": "monthly",
         },
     }
+
+    # REVENUE-004: the only event that grants entitlement — captured means
+    # Razorpay has definitively taken the money. payment.failed is handled
+    # as a pure no-op (see handle_webhook_event) so an out-of-order/late
+    # failed event can never revoke an already-processed captured payment.
+    # Any other event (order.paid, refund.*, payment.authorized, ...) is
+    # logged and ignored — out of scope for this MVP.
+    WEBHOOK_EVENT_PAYMENT_CAPTURED = "payment.captured"
+    WEBHOOK_EVENT_PAYMENT_FAILED = "payment.failed"
+
+    @staticmethod
+    def _row_factory(cursor, row):
+        return {
+            col[0]: row[idx]
+            for idx, col in enumerate(cursor.description)
+        }
 
     @classmethod
     def get_client(cls) -> razorpay.Client | None:
@@ -113,12 +134,51 @@ class PaymentService:
             user_id=user_id
         )
 
+        cls._record_pending_order(user_id, order["id"], plan)
+
         return {
             "order_id": order["id"],
             "amount": pricing["amount"],
             "currency": pricing["currency"],
             "key_id": settings.RAZORPAY_KEY_ID,
         }
+
+    @classmethod
+    def _record_pending_order(
+        cls,
+        user_id: int,
+        razorpay_order_id: str,
+        plan: str,
+    ) -> None:
+        # Best-effort bookkeeping only — the browser-driven /payments/verify
+        # path never reads this table, so a failure here must not fail
+        # checkout. It only means the webhook/reconciliation safety nets
+        # won't be able to resolve this one order back to a user later.
+
+        now = datetime.utcnow().isoformat()
+
+        try:
+            connection = DatabaseService.get_connection()
+            try:
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO pending_orders (
+                        razorpay_order_id, user_id, plan, status,
+                        created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, 'PENDING', ?, ?)
+                    """,
+                    (razorpay_order_id, user_id, plan, now, now)
+                )
+                connection.commit()
+            finally:
+                connection.close()
+        except Exception as exc:
+            LoggerService.error(
+                f"Failed to record pending order "
+                f"order_id={razorpay_order_id}: {exc}",
+                user_id=user_id
+            )
 
     @classmethod
     def verify_payment(
@@ -238,6 +298,19 @@ class PaymentService:
                 user_id
             )
 
+            # REVENUE-004: resolves the pending_orders row (if any) as part
+            # of the same atomic transaction. Safe no-op (rowcount 0) when
+            # there is no matching row — e.g. an order that predates this
+            # feature, or whose _record_pending_order insert failed.
+            cursor.execute(
+                """
+                UPDATE pending_orders
+                SET status = 'RESOLVED', updated_at = ?
+                WHERE razorpay_order_id = ?
+                """,
+                (now, razorpay_order_id)
+            )
+
             connection.commit()
 
         except sqlite3.IntegrityError:
@@ -274,3 +347,175 @@ class PaymentService:
             connection.close()
 
         return SubscriptionService.get_by_user_id(user_id)
+
+    # ── REVENUE-004: pending-order lookups (webhook + reconciliation) ──
+
+    @classmethod
+    def find_pending_order(cls, razorpay_order_id: str) -> Optional[dict]:
+
+        connection = DatabaseService.get_connection()
+        connection.row_factory = cls._row_factory
+
+        try:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                SELECT razorpay_order_id, user_id, plan, status, created_at
+                FROM pending_orders
+                WHERE razorpay_order_id = ?
+                """,
+                (razorpay_order_id,)
+            )
+            return cursor.fetchone()
+        finally:
+            connection.close()
+
+    @classmethod
+    def list_pending_orders_older_than(cls, cutoff_iso: str) -> list[dict]:
+
+        connection = DatabaseService.get_connection()
+        connection.row_factory = cls._row_factory
+
+        try:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                SELECT razorpay_order_id, user_id, plan, status, created_at
+                FROM pending_orders
+                WHERE status = 'PENDING' AND created_at <= ?
+                """,
+                (cutoff_iso,)
+            )
+            return cursor.fetchall()
+        finally:
+            connection.close()
+
+    @classmethod
+    def mark_order_abandoned(cls, razorpay_order_id: str) -> None:
+        # Guarded on status = 'PENDING' so this can never clobber a row a
+        # webhook/browser-verify resolved in the moment between
+        # reconciliation reading it and deciding to abandon it.
+
+        now = datetime.utcnow().isoformat()
+
+        connection = DatabaseService.get_connection()
+        try:
+            connection.execute(
+                """
+                UPDATE pending_orders
+                SET status = 'ABANDONED', updated_at = ?
+                WHERE razorpay_order_id = ? AND status = 'PENDING'
+                """,
+                (now, razorpay_order_id)
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+    # ── REVENUE-004: webhook signature + event handling ──
+
+    @staticmethod
+    def is_webhook_configured() -> bool:
+
+        return bool(settings.RAZORPAY_WEBHOOK_SECRET)
+
+    @classmethod
+    def verify_webhook_signature(cls, raw_body: bytes, signature: str) -> None:
+        # verify_webhook_signature is a pure HMAC-SHA256(raw_body, secret)
+        # check independent of API key auth, so a throwaway unauthenticated
+        # Client is fine here — it never calls the network.
+
+        if not cls.is_webhook_configured():
+            raise PaymentNotConfiguredError(
+                "Razorpay webhook secret is not configured"
+            )
+
+        if not signature:
+            raise InvalidWebhookSignatureError(
+                "Missing webhook signature"
+            )
+
+        try:
+            razorpay.Client().utility.verify_webhook_signature(
+                raw_body.decode("utf-8"),
+                signature,
+                settings.RAZORPAY_WEBHOOK_SECRET,
+            )
+        except SignatureVerificationError as exc:
+            raise InvalidWebhookSignatureError(
+                "Invalid webhook signature"
+            ) from exc
+
+    @classmethod
+    def handle_webhook_event(cls, payload: dict, event_id: str = "") -> None:
+        # Duplicate/out-of-order deliveries of payment.captured are made
+        # safe by process_verified_payment's existing razorpay_payment_id
+        # UNIQUE constraint — the same protection the browser-driven
+        # /payments/verify path already relies on. event_id is logged for
+        # traceability only; it is not persisted as a second dedup key.
+
+        event = payload.get("event", "")
+
+        if event == cls.WEBHOOK_EVENT_PAYMENT_CAPTURED:
+            cls._handle_payment_captured(payload, event_id)
+            return
+
+        if event == cls.WEBHOOK_EVENT_PAYMENT_FAILED:
+            LoggerService.info(
+                f"Webhook payment.failed received event_id={event_id} "
+                f"(no-op: never revokes an existing entitlement)"
+            )
+            return
+
+        LoggerService.info(
+            f"Webhook event ignored: event={event!r} event_id={event_id}"
+        )
+
+    @classmethod
+    def _handle_payment_captured(cls, payload: dict, event_id: str) -> None:
+
+        try:
+            entity = payload["payload"]["payment"]["entity"]
+            razorpay_order_id = entity["order_id"]
+            razorpay_payment_id = entity["id"]
+        except (KeyError, TypeError) as exc:
+            LoggerService.error(
+                f"Malformed payment.captured webhook payload "
+                f"event_id={event_id}: {exc}"
+            )
+            MonitoringEventService.record_failure(
+                MonitoringEventService.PAYMENT, "webhook_malformed_payload"
+            )
+            return
+
+        pending_order = cls.find_pending_order(razorpay_order_id)
+
+        if pending_order is None:
+            LoggerService.error(
+                f"Webhook payment.captured for unmatched order "
+                f"order_id={razorpay_order_id} event_id={event_id}"
+            )
+            MonitoringEventService.record_failure(
+                MonitoringEventService.PAYMENT, "webhook_unmatched_order"
+            )
+            return
+
+        try:
+            cls.process_verified_payment(
+                pending_order["user_id"],
+                razorpay_order_id,
+                razorpay_payment_id,
+                pending_order["plan"],
+            )
+            LoggerService.info(
+                f"Webhook payment.captured processed "
+                f"order_id={razorpay_order_id} "
+                f"payment_id={razorpay_payment_id} event_id={event_id}",
+                user_id=pending_order["user_id"]
+            )
+        except DuplicatePaymentError:
+            LoggerService.info(
+                f"Webhook payment.captured already processed "
+                f"payment_id={razorpay_payment_id} event_id={event_id}",
+                user_id=pending_order["user_id"]
+            )

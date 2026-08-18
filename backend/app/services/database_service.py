@@ -369,6 +369,43 @@ class DatabaseService:
             """
         )
 
+        # REVENUE-004: maps a Razorpay order back to (user_id, plan) for the
+        # webhook and reconciliation paths, which only ever receive an
+        # order_id/payment_id from Razorpay — never a Vedzovi JWT. Kept as
+        # a separate table (rather than a pending row in `payments`) so the
+        # razorpay_payment_id NOT NULL UNIQUE replay-protection constraint
+        # above is never touched by pre-payment bookkeeping.
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pending_orders (
+
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                razorpay_order_id TEXT NOT NULL UNIQUE,
+
+                user_id INTEGER NOT NULL,
+
+                plan TEXT NOT NULL,
+
+                status TEXT NOT NULL DEFAULT 'PENDING',
+
+                created_at TEXT NOT NULL,
+
+                updated_at TEXT NOT NULL,
+
+                FOREIGN KEY (user_id) REFERENCES users(id)
+
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_pending_orders_status
+            ON pending_orders(status)
+            """
+        )
+
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS password_resets (

@@ -34,6 +34,9 @@ from app.routers.mission_control import router as mission_control_router
 from app.routers.ops import router as ops_router
 from app.routers.admin_health import router as admin_health_router
 from app.services.health_scheduler_service import HealthSchedulerService
+from app.services.reconciliation_scheduler_service import (
+    ReconciliationSchedulerService,
+)
 
 load_dotenv()
 
@@ -175,6 +178,10 @@ app.include_router(admin_health_router)
 # service above has initialized.
 HealthSchedulerService.start()
 
+# REVENUE-004: same daemon-thread pattern as HealthSchedulerService above,
+# started independently so a failure in one never affects the other.
+ReconciliationSchedulerService.start()
+
 
 @app.on_event("shutdown")
 def on_shutdown():
@@ -185,6 +192,8 @@ def on_shutdown():
     )
 
     HealthSchedulerService.stop()
+
+    ReconciliationSchedulerService.stop()
 
     BackgroundJobService.shutdown()
 

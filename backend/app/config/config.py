@@ -424,6 +424,14 @@ class Settings(BaseSettings):
         ""
     )
 
+    # REVENUE-004: separate from RAZORPAY_KEY_SECRET — this HMACs webhook
+    # deliveries from Razorpay's servers and is generated independently
+    # when the webhook URL is registered in the Razorpay dashboard.
+    RAZORPAY_WEBHOOK_SECRET: str = os.getenv(
+        "RAZORPAY_WEBHOOK_SECRET",
+        ""
+    )
+
     PASSWORD_RESET_TOKEN_EXPIRY_MINUTES: int = int(
         os.getenv(
             "PASSWORD_RESET_TOKEN_EXPIRY_MINUTES",
@@ -561,6 +569,15 @@ class Settings(BaseSettings):
         os.getenv(
             "HEALTH_SNAPSHOT_INTERVAL_MINUTES",
             "5"
+        )
+    )
+
+    # REVENUE-004: ReconciliationSchedulerService poll interval — same
+    # daemon-thread pattern as HealthSchedulerService above.
+    RECONCILIATION_INTERVAL_MINUTES: int = int(
+        os.getenv(
+            "RECONCILIATION_INTERVAL_MINUTES",
+            "10"
         )
     )
 
