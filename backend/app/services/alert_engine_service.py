@@ -40,6 +40,12 @@ class AlertEngineService:
         "email": "Email send failure count crossed the configured warning threshold in the rolling window.",
         "backups": "Backup missing, failed, stale, or not restore-verified.",
         "growth_intelligence": "Mission Control summary computation failed.",
+        # Deliberately no "self_recovery_backend"/"self_recovery_frontend"
+        # entries here (VED-P1-018): those alerts are raised by record_alert()
+        # with an already-specific, dynamic message (which unit, which
+        # attempt), so _open_or_keep's entry["message"] fallback is what
+        # should populate root_cause — a static string here would silently
+        # overwrite it. See SUGGESTED_FIXES below for their static fix text.
     }
 
     SUGGESTED_FIXES = {
@@ -56,6 +62,8 @@ class AlertEngineService:
         "email": "Check RESEND_API_KEY configuration and the Resend delivery dashboard.",
         "backups": "Run scripts/backup.sh manually and check the VPS cron schedule; investigate the failure in BACKUP_ROOT/logs.",
         "growth_intelligence": "Check backend logs for the MissionControlService exception; likely a downstream database or query failure.",
+        "self_recovery_backend": "Check backend logs and journalctl -u agc-backend.service; the watchdog has exhausted its automatic recovery attempts for this hour — manual intervention is required.",
+        "self_recovery_frontend": "Check journalctl -u agc-frontend.service; the watchdog has exhausted its automatic recovery attempts for this hour — manual intervention is required.",
     }
 
     @classmethod
@@ -87,6 +95,48 @@ class AlertEngineService:
             LoggerService.error(f"AlertEngineService.evaluate_and_raise failed: {exc}")
 
         return cls.get_open_alerts()
+
+    @classmethod
+    def record_alert(cls, check_id: str, message: str, evidence: dict | None = None) -> None:
+        """VED-P1-018: standalone entry point for producers other than
+        HealthEngineService's evaluate_and_raise cycle — currently only the
+        external self-recovery watchdog (scripts/self_recovery_watchdog.sh),
+        which calls this via backend/scripts/record_recovery_alert.py after
+        an automatic restart attempt fails to bring a service back. Reuses
+        the same dedup-by-open-check_id rule as _open_or_keep. Never raises.
+        """
+
+        try:
+            connection = DatabaseService.get_connection()
+            try:
+                cursor = connection.cursor()
+                now = datetime.utcnow().isoformat()
+                entry = {"message": message, "evidence": evidence or {}}
+                cls._open_or_keep(cursor, check_id, CheckStatus.CRITICAL, entry, now)
+                connection.commit()
+            finally:
+                connection.close()
+        except Exception as exc:
+            LoggerService.error(f"AlertEngineService.record_alert failed: {exc}")
+
+    @classmethod
+    def resolve_alert(cls, check_id: str) -> None:
+        """VED-P1-018: counterpart to record_alert — called by the external
+        watchdog once a service it previously flagged has recovered. Never
+        raises.
+        """
+
+        try:
+            connection = DatabaseService.get_connection()
+            try:
+                cursor = connection.cursor()
+                now = datetime.utcnow().isoformat()
+                cls._resolve_open(cursor, check_id, now)
+                connection.commit()
+            finally:
+                connection.close()
+        except Exception as exc:
+            LoggerService.error(f"AlertEngineService.resolve_alert failed: {exc}")
 
     @classmethod
     def _open_or_keep(cls, cursor, check_id: str, status: str, entry: dict, now: str) -> None:

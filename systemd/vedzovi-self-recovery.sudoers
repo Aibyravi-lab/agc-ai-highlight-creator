@@ -1,0 +1,19 @@
+# VED-P1-018 — scoped sudoers rule for the self-recovery watchdog.
+#
+# Grants the `agc` user (the same user agc-backend.service and
+# agc-frontend.service already run as) permission to run exactly these
+# four commands, and nothing else, without a password prompt. No
+# wildcards, no blanket sudo.
+#
+# Install (as root, on the VPS — never edit /etc/sudoers directly):
+#   sudo cp systemd/vedzovi-self-recovery.sudoers /etc/sudoers.d/vedzovi-self-recovery
+#   sudo chmod 440 /etc/sudoers.d/vedzovi-self-recovery
+#   sudo visudo -cf /etc/sudoers.d/vedzovi-self-recovery   # must print "parsed OK"
+#
+# Uninstall:
+#   sudo rm -f /etc/sudoers.d/vedzovi-self-recovery
+
+agc ALL=(root) NOPASSWD: /bin/systemctl restart agc-backend.service
+agc ALL=(root) NOPASSWD: /bin/systemctl restart agc-frontend.service
+agc ALL=(root) NOPASSWD: /bin/systemctl is-active agc-backend.service
+agc ALL=(root) NOPASSWD: /bin/systemctl is-active agc-frontend.service

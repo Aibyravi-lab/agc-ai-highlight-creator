@@ -1,0 +1,16 @@
+# VED-P1-018 — runs vedzovi-self-recovery.service every minute.
+#
+# Persistent=true: if the VPS was down/rebooting when a tick would have
+# fired, run once on the next boot instead of silently skipping it.
+
+[Unit]
+Description=Run Vedzovi self-recovery watchdog every minute (VED-P1-018)
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=5s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

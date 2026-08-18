@@ -1,0 +1,30 @@
+# VED-P1-018 — External self-recovery watchdog service unit.
+#
+# Triggered every minute by vedzovi-self-recovery.timer (never run
+# directly by WantedBy=multi-user.target — this is Type=oneshot, driven
+# entirely by the timer).
+#
+# Runs as the unprivileged `agc` user, matching agc-backend.service /
+# agc-frontend.service. The two `systemctl restart` calls the watchdog
+# script needs are granted through a narrowly scoped sudoers rule
+# (systemd/vedzovi-self-recovery.sudoers) rather than running this whole
+# unit as root — see docs/SELF_RECOVERY.md §"Privilege model".
+#
+# Overlap prevention is handled inside the script itself (an atomic
+# `mkdir`-based lock under STATE_DIR), not by this unit — that keeps the
+# same guarantee whether the script is triggered by this timer or run
+# manually for troubleshooting.
+
+[Unit]
+Description=Vedzovi self-recovery watchdog (VED-P1-018)
+Documentation=file:///home/agc/agc-ai-highlight-creator/docs/SELF_RECOVERY.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=agc
+WorkingDirectory=/home/agc/agc-ai-highlight-creator
+Environment=APP_DIR=/home/agc/agc-ai-highlight-creator
+ExecStart=/home/agc/agc-ai-highlight-creator/scripts/self_recovery_watchdog.sh
+TimeoutStartSec=90
