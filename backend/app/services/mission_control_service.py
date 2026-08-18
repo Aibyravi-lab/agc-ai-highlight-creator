@@ -7,6 +7,7 @@ from app.services.feedback_service import FeedbackService
 from app.services.health_service import HealthService
 from app.services.maintenance_service import MaintenanceService
 from app.services.observability_service import ObservabilityService
+from app.services.payment_service import PaymentService
 from app.services.subscription_service import SubscriptionPlan, SubscriptionStatus
 
 # VED-085: failed-job-rate threshold above which the BLOCKERS section
@@ -120,6 +121,7 @@ class MissionControlService:
                 "environment": health["environment"],
             },
             "live_metrics": metrics,
+            "revenue": cls._get_revenue(metrics),
             "distribution": distribution,
             "capability_registry": CAPABILITY_REGISTRY,
             "blockers": cls._get_blockers(metrics, distribution, maintenance_on),
@@ -324,6 +326,28 @@ class MissionControlService:
             "active_pro_users": active_pro_users,
             "processed_payments": processed_payments,
             "distinct_feedback_users": distinct_feedback_users,
+        }
+
+    @classmethod
+    def _get_revenue(cls, metrics: dict) -> dict:
+        # REVENUE-005: reuses processed_payments/active_pro_users already
+        # computed by _get_live_metrics — no new SQL query. Both figures are
+        # count × PaymentService.PLAN_PRICING["pro"]["amount"], the single
+        # authoritative price source (see PaymentService), not a second
+        # pricing constant. This is an approximation, not a stored ledger:
+        # payments never persist the amount actually charged, so this is
+        # only accurate as long as the plan price has never changed —
+        # historical_pricing_supported communicates that limitation to the
+        # frontend/consumer instead of silently overstating accuracy.
+        pricing = PaymentService.PLAN_PRICING["pro"]
+        price_per_unit = pricing["amount"]
+
+        return {
+            "gross_processed_revenue_paise": metrics["processed_payments"] * price_per_unit,
+            "estimated_mrr_paise": metrics["active_pro_users"] * price_per_unit,
+            "currency": pricing["currency"],
+            "price_source": "PLAN_PRICING",
+            "historical_pricing_supported": False,
         }
 
     @classmethod

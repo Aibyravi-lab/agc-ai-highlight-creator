@@ -25,7 +25,7 @@ export function MissionControlDashboard({
     <div className="space-y-8">
       <CommandHeader health={summary.production_health} lastUpdatedAt={lastUpdatedAt} />
       <SegmentationBanner segmentation={summary.segmentation} />
-      <HeroMetrics metrics={summary.live_metrics} />
+      <HeroMetrics metrics={summary.live_metrics} revenue={summary.revenue} />
       <ActivityChart activity={summary.weekly_activity} />
       <UserFunnel metrics={summary.live_metrics} />
       <DistributionPanel distribution={summary.distribution} />

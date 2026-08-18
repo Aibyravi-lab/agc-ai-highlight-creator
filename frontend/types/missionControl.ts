@@ -36,6 +36,19 @@ export interface LiveMetrics {
   distinct_feedback_users: number;
 }
 
+export interface Revenue {
+  // REVENUE-005: derived from live_metrics.processed_payments /
+  // active_pro_users × the current PLAN_PRICING price — not a stored
+  // historical ledger. historical_pricing_supported is false because
+  // payments do not persist the amount actually charged, so this is only
+  // accurate as long as the plan price has never changed.
+  gross_processed_revenue_paise: number;
+  estimated_mrr_paise: number;
+  currency: string;
+  price_source: string;
+  historical_pricing_supported: boolean;
+}
+
 export interface CreditBreakdown {
   exhausted: number;
   low: number;
@@ -118,6 +131,7 @@ export interface Segmentation {
 export interface MissionControlSummary {
   production_health: ProductionHealth;
   live_metrics: LiveMetrics;
+  revenue: Revenue;
   distribution: Distribution;
   capability_registry: CapabilityCategory[];
   blockers: Blocker[];

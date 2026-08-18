@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { LiveMetrics } from "../../../types/missionControl";
+import type { LiveMetrics, Revenue } from "../../../types/missionControl";
 import { useCountUp } from "../../../hooks/useCountUp";
 import { IconActivity, IconCreditCard, IconCrown, IconFilm, IconRepeat, IconUsers } from "./icons";
 import { IconWrap } from "./primitives";
@@ -9,6 +9,38 @@ import { IconWrap } from "./primitives";
 function ratio(numerator: number, denominator: number): string | null {
   if (denominator <= 0) return null;
   return `${Math.round((numerator / denominator) * 100)}%`;
+}
+
+function formatPaise(paise: number, currency: string): string {
+  const symbol = currency === "INR" ? "₹" : `${currency} `;
+  return `${symbol}${Math.round(paise / 100).toLocaleString("en-IN")}`;
+}
+
+function RevenueCard({ revenue }: { revenue: Revenue }) {
+  return (
+    <div className="rounded-xl border border-[#1e2030] bg-[#0f1117] p-4 relative overflow-hidden">
+      <div className="absolute inset-x-0 top-0 h-0.5 bg-amber-500/60" />
+      <div className="flex items-center gap-3">
+        <IconWrap tone="amber">
+          <IconCreditCard />
+        </IconWrap>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Revenue</p>
+      </div>
+      <div className="mt-3 space-y-2">
+        <div>
+          <p className="text-xl font-bold tabular-nums">{formatPaise(revenue.gross_processed_revenue_paise, revenue.currency)}</p>
+          <p className="text-xs text-gray-500">Gross Processed</p>
+        </div>
+        <div>
+          <p className="text-xl font-bold tabular-nums">{formatPaise(revenue.estimated_mrr_paise, revenue.currency)}</p>
+          <p className="text-xs text-gray-500">Estimated MRR</p>
+        </div>
+      </div>
+      <p className="text-[10px] text-gray-600 mt-2">
+        Gross = processed payments &times; current price &middot; MRR = active PRO &times; current price
+      </p>
+    </div>
+  );
 }
 
 function HeroCard({
@@ -43,7 +75,7 @@ function HeroCard({
   );
 }
 
-export function HeroMetrics({ metrics }: { metrics: LiveMetrics }) {
+export function HeroMetrics({ metrics, revenue }: { metrics: LiveMetrics; revenue: Revenue }) {
   // GROW-005.2: these cards present job activity as user traction, so they
   // use the external-only job counts rather than total_jobs/completed_jobs
   // (which include internal/test jobs and stay reserved for operational use).
@@ -97,6 +129,7 @@ export function HeroMetrics({ metrics }: { metrics: LiveMetrics }) {
           value={metrics.processed_payments}
           secondary="lifetime"
         />
+        <RevenueCard revenue={revenue} />
       </div>
     </div>
   );

@@ -20,11 +20,15 @@ from app.dependencies import get_current_user, require_admin
 from app.routers import mission_control as mission_control_router_module
 from app.services.database_service import DatabaseService
 from app.services.mission_control_service import MissionControlService
+from app.services.monitoring_event_service import MonitoringEventService
+from app.services.payment_service import PaymentService
 from app.services.subscription_service import (
     SubscriptionPlan,
     SubscriptionStatus,
     SubscriptionService,
 )
+
+PRO_PRICE_PAISE = PaymentService.PLAN_PRICING["pro"]["amount"]
 
 
 def _make_isolated_db():
@@ -193,6 +197,7 @@ class MissionControlEndpointTests(unittest.TestCase):
             {
                 "production_health",
                 "live_metrics",
+                "revenue",
                 "distribution",
                 "capability_registry",
                 "blockers",
@@ -834,6 +839,139 @@ class MissionControlRepeatUserTests(unittest.TestCase):
         metrics = MissionControlService._get_live_metrics()
 
         self.assertEqual(metrics["repeat_users"], 0)
+
+
+class MissionControlRevenueTests(unittest.TestCase):
+    """REVENUE-005: revenue block derived from live_metrics.processed_payments
+    / active_pro_users x PaymentService.PLAN_PRICING — no independent SQL,
+    no independent pricing constant, no persisted historical amount."""
+
+    def setUp(self):
+        self._tmp_dir = _make_isolated_db()
+
+    def tearDown(self):
+        self._tmp_dir.cleanup()
+
+    def test_zero_payments_yields_zero_revenue(self):
+        revenue = MissionControlService._get_revenue(MissionControlService._get_live_metrics())
+
+        self.assertEqual(revenue["gross_processed_revenue_paise"], 0)
+        self.assertEqual(revenue["estimated_mrr_paise"], 0)
+
+    def test_one_external_payment_yields_one_unit_of_gross_revenue(self):
+        user_id = _create_user("payer@test.com")
+        _insert_payment(user_id)
+
+        revenue = MissionControlService._get_revenue(MissionControlService._get_live_metrics())
+
+        self.assertEqual(revenue["gross_processed_revenue_paise"], PRO_PRICE_PAISE)
+
+    def test_multiple_external_payments_multiply_correctly(self):
+        for i in range(3):
+            user_id = _create_user(f"payer{i}@test.com")
+            _insert_payment(user_id)
+
+        revenue = MissionControlService._get_revenue(MissionControlService._get_live_metrics())
+
+        self.assertEqual(revenue["gross_processed_revenue_paise"], 3 * PRO_PRICE_PAISE)
+
+    def test_internal_user_payment_excluded_from_gross_revenue(self):
+        # Same segmentation rule already proven for processed_payments —
+        # revenue must inherit it since it's derived from that same count.
+        internal_user = _create_user("int@test.com", is_internal=True)
+        _insert_payment(internal_user)
+
+        revenue = MissionControlService._get_revenue(MissionControlService._get_live_metrics())
+
+        self.assertEqual(revenue["gross_processed_revenue_paise"], 0)
+
+    def test_one_active_pro_subscriber_yields_one_unit_of_mrr(self):
+        user_id = _create_user("pro@test.com")
+        SubscriptionService.upgrade_to_pro(user_id)
+
+        revenue = MissionControlService._get_revenue(MissionControlService._get_live_metrics())
+
+        self.assertEqual(revenue["estimated_mrr_paise"], PRO_PRICE_PAISE)
+
+    def test_expired_pro_subscriber_excluded_from_mrr(self):
+        user_id = _create_user("expired@test.com")
+        past = (datetime.utcnow() - timedelta(days=1)).isoformat()
+
+        connection = DatabaseService.get_connection()
+        cursor = connection.cursor()
+        cursor.execute(
+            "UPDATE subscriptions SET plan = ?, status = ?, expires_at = ? WHERE user_id = ?",
+            (SubscriptionPlan.PRO, SubscriptionStatus.ACTIVE, past, user_id),
+        )
+        connection.commit()
+        connection.close()
+
+        revenue = MissionControlService._get_revenue(MissionControlService._get_live_metrics())
+
+        self.assertEqual(revenue["estimated_mrr_paise"], 0)
+
+    def test_payment_failure_monitoring_event_does_not_affect_revenue(self):
+        user_id = _create_user("faileduser@test.com")
+        MonitoringEventService.record_failure(MonitoringEventService.PAYMENT, "gateway_error")
+        MonitoringEventService.record_failure(MonitoringEventService.PAYMENT, "invalid_signature")
+
+        revenue = MissionControlService._get_revenue(MissionControlService._get_live_metrics())
+
+        self.assertEqual(revenue["gross_processed_revenue_paise"], 0)
+        self.assertEqual(revenue["estimated_mrr_paise"], 0)
+        # A failed payment never inserts into `payments` or `subscriptions`,
+        # so a real payment for the same user must still count normally.
+        _insert_payment(user_id)
+        revenue = MissionControlService._get_revenue(MissionControlService._get_live_metrics())
+        self.assertEqual(revenue["gross_processed_revenue_paise"], PRO_PRICE_PAISE)
+
+    def test_admin_summary_response_contains_revenue_block(self):
+        summary = MissionControlService.get_summary()
+
+        self.assertIn("revenue", summary)
+        self.assertEqual(
+            set(summary["revenue"].keys()),
+            {
+                "gross_processed_revenue_paise",
+                "estimated_mrr_paise",
+                "currency",
+                "price_source",
+                "historical_pricing_supported",
+            },
+        )
+
+    def test_revenue_response_shape_and_types(self):
+        user_id = _create_user("payer@test.com")
+        _insert_payment(user_id)
+        SubscriptionService.upgrade_to_pro(user_id)
+
+        revenue = MissionControlService._get_revenue(MissionControlService._get_live_metrics())
+
+        self.assertIsInstance(revenue["gross_processed_revenue_paise"], int)
+        self.assertIsInstance(revenue["estimated_mrr_paise"], int)
+        self.assertEqual(revenue["currency"], "INR")
+        self.assertEqual(revenue["price_source"], "PLAN_PRICING")
+        self.assertIs(revenue["historical_pricing_supported"], False)
+
+    def test_revenue_does_not_claim_historical_pricing_accuracy(self):
+        # Known limitation (not a bug): payments do not persist the amount
+        # actually charged, so a future price change would retroactively
+        # (and incorrectly) reprice every historical payment under a naive
+        # count x current_price model. historical_pricing_supported=False
+        # is the explicit, permanent signal of that limitation — this test
+        # pins it rather than asserting any historical accuracy claim.
+        revenue = MissionControlService._get_revenue(MissionControlService._get_live_metrics())
+        self.assertFalse(revenue["historical_pricing_supported"])
+
+    def test_non_admin_cannot_reach_revenue_via_summary_endpoint(self):
+        app = FastAPI()
+        app.include_router(mission_control_router_module.router)
+        app.dependency_overrides[get_current_user] = lambda: {"id": 1, "is_admin": 0}
+        client = TestClient(app)
+
+        response = client.get("/admin/mission-control/summary")
+
+        self.assertEqual(response.status_code, 403)
 
 
 if __name__ == "__main__":
