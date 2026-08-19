@@ -1,4 +1,3 @@
-import hashlib
 import os
 import platform
 import shutil
@@ -14,8 +13,15 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DISK_WARNING_FREE_PERCENT = 15.0
 _SUBPROCESS_TIMEOUT_SECONDS = 3
 _BACKUP_TIMESTAMP_FORMAT = "%Y-%m-%d_%H%M%S"
-_CHECKSUM_READ_CHUNK_BYTES = 1024 * 1024
 _RESTORE_TEST_METHOD = "tmp_extraction+sqlite_pragma_integrity_check"
+
+# VED-BACKUP-INTEGRITY-001: the fixed-purpose, root-owned verifier invoked
+# via the narrowly-scoped NOPASSWD sudo rule in
+# systemd/vedzovi-backup-verifier.sudoers. See scripts/verify_backup_integrity.sh
+# for its output contract.
+_BACKUP_VERIFIER_PATH = "/usr/local/sbin/vedzovi-verify-backup"
+_BACKUP_VERIFIER_TIMEOUT_SECONDS = 20
+_BACKUP_VERIFIER_EXPECTED_RETURNCODE = {"healthy": 0, "unhealthy": 1, "unknown": 2}
 
 
 class HealthService:
@@ -352,10 +358,20 @@ class HealthService:
 
     @classmethod
     def verify_backup_archive_integrity(cls) -> dict:
-        """Archive-integrity check ONLY: re-runs restore.sh's own checksum
-        pre-flight (SHA256 of every archive against checksums.sha256 in the
-        most recent backup directory) with zero extraction and zero writes
-        to any live file. Never invokes restore.sh.
+        """Archive-integrity check ONLY: SHA256 of every archive against
+        checksums.sha256 in the most recent backup directory, with zero
+        extraction and zero writes to any live file. Never invokes
+        restore.sh.
+
+        /opt/vedzovi-backups is root:root 700 per backup directory (see
+        docs/BACKUP_STRATEGY.md) — the `agc` user this backend runs as
+        cannot read inside it directly. VED-BACKUP-INTEGRITY-001 closes
+        that gap by delegating the actual checksum verification to
+        scripts/verify_backup_integrity.sh, a fixed-purpose root-owned
+        script invoked through the narrowly-scoped NOPASSWD sudo rule in
+        systemd/vedzovi-backup-verifier.sudoers — no backup permissions are
+        widened. This method only invokes that verifier and strictly parses
+        its stdout; it never reads backup files itself.
 
         This is NOT a restore test — it proves the archive bytes are intact,
         not that they actually extract into a usable database/config. It
@@ -371,29 +387,85 @@ class HealthService:
             if not root.exists():
                 return {"status": "unknown", "verified": None, "backup_dir": None}
 
-            candidates = sorted(
-                (entry for entry in root.iterdir() if entry.is_dir() and entry.name[:4].isdigit()),
-                reverse=True,
-            )
-
-            if not candidates:
+            result = cls._invoke_backup_verifier()
+            if result is None:
                 return {"status": "unknown", "verified": None, "backup_dir": None}
 
-            latest = candidates[0]
-            checksum_file = latest / "checksums.sha256"
+            parsed = cls._parse_backup_verifier_output(result.stdout)
+            if parsed is None:
+                return {"status": "unknown", "verified": None, "backup_dir": None}
 
-            if not checksum_file.exists():
-                return {"status": "unhealthy", "verified": False, "backup_dir": latest.name}
+            if result.returncode != _BACKUP_VERIFIER_EXPECTED_RETURNCODE[parsed["status"]]:
+                return {"status": "unknown", "verified": None, "backup_dir": None}
 
-            verified = cls._verify_checksums(latest, checksum_file)
-
-            return {
-                "status": "healthy" if verified else "unhealthy",
-                "verified": verified,
-                "backup_dir": latest.name,
-            }
+            return parsed
         except Exception:
             return {"status": "unknown", "verified": None, "backup_dir": None}
+
+    @classmethod
+    def _invoke_backup_verifier(cls) -> Optional[subprocess.CompletedProcess]:
+        """Runs the fixed-purpose, root-owned archive-integrity verifier via
+        the narrowly-scoped NOPASSWD sudo rule
+        (systemd/vedzovi-backup-verifier.sudoers). `sudo -n` fails
+        immediately rather than hanging on a password prompt if the sudoers
+        rule is missing or misconfigured. Isolated into its own method —
+        never inlined into verify_backup_archive_integrity() — purely so
+        tests can mock this one call without needing sudo or the production
+        verifier installed (this backend must stay unit-testable on a plain
+        dev machine, including Windows, with no sudo helper present).
+        """
+
+        try:
+            return subprocess.run(
+                ["sudo", "-n", _BACKUP_VERIFIER_PATH],
+                capture_output=True,
+                text=True,
+                timeout=_BACKUP_VERIFIER_TIMEOUT_SECONDS,
+            )
+        except Exception:
+            return None
+
+    @classmethod
+    def _parse_backup_verifier_output(cls, stdout: str) -> Optional[dict]:
+        """Strict key=value parser for the verifier's stdout contract (see
+        scripts/verify_backup_integrity.sh). Anything that doesn't match the
+        exact expected shape — missing/extra/duplicate keys, an inconsistent
+        status/verified combination, or a "healthy" result with no
+        backup_dir — is treated as malformed and returns None. This is the
+        boundary that prevents a compromised, buggy, or truncated verifier
+        from ever forcing a "healthy" result.
+        """
+
+        fields: dict = {}
+        for line in (stdout or "").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            key, sep, value = line.partition("=")
+            if not sep or key.strip() in fields:
+                return None
+            fields[key.strip()] = value.strip()
+
+        if set(fields.keys()) != {"status", "verified", "backup_dir", "reason"}:
+            return None
+
+        status = fields["status"]
+        verified_token = fields["verified"]
+        backup_dir = fields["backup_dir"] or None
+
+        valid_combo = (
+            (status == "healthy" and verified_token == "true" and backup_dir)
+            or (status == "unhealthy" and verified_token == "false")
+            or (status == "unknown" and verified_token == "unknown")
+        )
+        if not valid_combo:
+            return None
+
+        return {
+            "status": status,
+            "verified": True if verified_token == "true" else False if verified_token == "false" else None,
+            "backup_dir": backup_dir,
+        }
 
     @classmethod
     def get_restore_test_status(cls) -> dict:
@@ -466,33 +538,3 @@ class HealthService:
                 "backup_dir": None,
                 "method": None,
             }
-
-    @classmethod
-    def _verify_checksums(cls, backup_dir: Path, checksum_file: Path) -> bool:
-
-        lines = checksum_file.read_text(encoding="utf-8", errors="ignore").splitlines()
-
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-
-            parts = line.split(maxsplit=1)
-            if len(parts) != 2:
-                continue
-
-            expected_hash, filename = parts
-            archive_path = backup_dir / filename.lstrip("*")
-
-            if not archive_path.exists():
-                return False
-
-            hasher = hashlib.sha256()
-            with open(archive_path, "rb") as handle:
-                for chunk in iter(lambda: handle.read(_CHECKSUM_READ_CHUNK_BYTES), b""):
-                    hasher.update(chunk)
-
-            if hasher.hexdigest() != expected_hash:
-                return False
-
-        return True

@@ -178,6 +178,15 @@ agc ALL=(root) NOPASSWD: /bin/systemctl is-active agc-frontend.service
 See `systemd/vedzovi-self-recovery.sudoers` (versioned reference — install
 it explicitly, see §7).
 
+**Not the same rule as the backup verifier.** `agc` also has a second,
+unrelated NOPASSWD sudo rule — `systemd/vedzovi-backup-verifier.sudoers`,
+installed separately as `/etc/sudoers.d/vedzovi-backup-verifier` — that
+grants exactly one different command, `/usr/local/sbin/vedzovi-verify-backup`
+(archive-integrity checksum verification only; see
+[BACKUP_STRATEGY.md](BACKUP_STRATEGY.md#archive-integrity-evidence-for-the-backend-health-check-ved-backup-integrity-001)).
+The two files are kept deliberately separate and neither is ever widened to
+cover the other's capability.
+
 ---
 
 ## 7 — Installation (run on the VPS)

@@ -217,6 +217,93 @@ reads `last_restore_test_status` read-only via
 performed"), never `healthy` — a checksum-clean, fresh backup alone is not
 enough to claim the backup is actually restorable.
 
+### Archive-integrity evidence for the backend health check (VED-BACKUP-INTEGRITY-001)
+
+`HealthEngineService._check_backups()` needs the checksum-verification result
+above as a machine-readable signal, but the backend runs as the unprivileged
+`agc` user, and `/opt/vedzovi-backups` is deliberately root-only (see
+[Where backups live](#where-backups-live)) — `agc` cannot traverse into a
+`700` timestamped backup directory to read `checksums.sha256` itself.
+Backup permissions are **not** weakened to fix this.
+
+Instead, `agc` is granted a single, narrowly-scoped, argument-free `sudo`
+rule to run one fixed-purpose root-owned script:
+
+```
+agc backend
+  -> sudo -n /usr/local/sbin/vedzovi-verify-backup   (no arguments accepted)
+  -> scripts/verify_backup_integrity.sh, installed as that binary
+  -> fixed BACKUP_ROOT=/opt/vedzovi-backups, no path input from the caller
+  -> sha256sum -c against the latest backup's checksums.sha256 only
+  -> strict key=value stdout, consumed by HealthService
+```
+
+`scripts/verify_backup_integrity.sh`:
+
+- takes no arguments (any argument is rejected)
+- never extracts an archive, never writes, deletes, or modifies anything
+  under `BACKUP_ROOT`, never touches live application data, and never
+  invokes `scripts/restore.sh` or `scripts/restore_test.sh`
+- prints exactly four `key=value` lines (`status`, `verified`,
+  `backup_dir`, `reason`) and exits `0` (healthy), `1` (unhealthy — the
+  archive checksums don't match, or `checksums.sha256` is missing), or `2`
+  (unknown — no backup found, or the environment isn't usable)
+
+`HealthService.verify_backup_archive_integrity()` invokes it via
+`subprocess.run(["sudo", "-n", ...], ...)` (no shell, bounded timeout) and
+strictly parses that output — any malformed, inconsistent, or unreachable
+result becomes `status="unknown"`, never a silently-assumed `"healthy"`.
+`HealthService._invoke_backup_verifier()` is a single, separately-mockable
+method specifically so the backend's unit tests never need real `sudo` or
+the production verifier installed.
+
+#### Install (as root, on the VPS)
+
+```bash
+# 1. Install the verifier binary
+sudo install -o root -g root -m 0755 scripts/verify_backup_integrity.sh \
+    /usr/local/sbin/vedzovi-verify-backup
+
+# 2. Install the sudoers rule
+sudo cp systemd/vedzovi-backup-verifier.sudoers /etc/sudoers.d/vedzovi-backup-verifier
+sudo chmod 440 /etc/sudoers.d/vedzovi-backup-verifier
+sudo visudo -cf /etc/sudoers.d/vedzovi-backup-verifier   # must print "parsed OK"
+
+# 3. Verify it works as the agc user
+sudo -u agc sudo -n /usr/local/sbin/vedzovi-verify-backup
+# expect: status=healthy / unhealthy / unknown lines, matching the current
+# backup state — never a password prompt (NOPASSWD) and never a shell
+```
+
+#### Rollback
+
+```bash
+sudo rm -f /etc/sudoers.d/vedzovi-backup-verifier
+sudo rm -f /usr/local/sbin/vedzovi-verify-backup
+```
+
+`HealthService.verify_backup_archive_integrity()` degrades to
+`status="unknown"` the moment either is removed (the `sudo -n` call simply
+fails) — this rollback never affects `scripts/backup.sh`,
+`scripts/restore_test.sh`, or backup permissions in any way.
+
+#### Troubleshooting
+
+| Symptom | Likely cause | Check |
+|---|---|---|
+| Health check shows `archive_integrity.status = "unknown"` | Verifier or sudoers rule not installed, or path mismatch | Re-run the install steps above; confirm `/usr/local/sbin/vedzovi-verify-backup` exists and is `0755 root:root` |
+| `sudo: a password is required` when run manually as `agc` | Sudoers rule missing/misconfigured | `sudo visudo -cf /etc/sudoers.d/vedzovi-backup-verifier`; confirm the exact path matches `/usr/local/sbin/vedzovi-verify-backup` |
+| `reason=no_checksum_file` | `scripts/backup.sh` didn't complete the checksum step, or was interrupted | Check `BACKUP_ROOT/logs/backup_<ts>.log` for the failed run |
+| `reason=checksum_mismatch` | An archive was corrupted or modified after the backup ran | Do not trust that backup for restore; investigate how it was altered, then let the next scheduled `scripts/backup.sh` run produce a fresh one |
+| `reason=not_root` | Verifier invoked directly by a non-root user, bypassing `sudo` | Always invoke it through `sudo -n /usr/local/sbin/vedzovi-verify-backup`, never directly |
+
+This is archive-integrity evidence only — it is deliberately independent of
+[restore-test evidence](#restore-test-not-the-same-as-the-checksum-check-above);
+a `healthy` result here never implies the restore-test has passed, and vice
+versa. See `HealthEngineService._check_backups()` for how the three signals
+(freshness, archive-integrity, restore-test) combine into one status without
+ever conflating them.
+
 ## Verifying backups are healthy
 
 ```bash

@@ -1,0 +1,28 @@
+# VED-BACKUP-INTEGRITY-001 — scoped sudoers rule for backup archive-integrity
+# verification.
+#
+# Grants the `agc` user (the same user agc-backend.service already runs as)
+# NOPASSWD permission to run exactly one fixed-purpose, root-owned script —
+# nothing else. The script itself takes no arguments, reads a fixed
+# BACKUP_ROOT, and only performs read-only `sha256sum -c` checksum
+# verification (see scripts/verify_backup_integrity.sh). It never extracts
+# archives, never modifies anything under /opt/vedzovi-backups, and never
+# invokes restore.sh or restore_test.sh.
+#
+# This is a dedicated file, deliberately separate from
+# systemd/vedzovi-self-recovery.sudoers (VED-P1-018) — that rule grants
+# systemctl restart/is-active for agc-backend/agc-frontend and must not be
+# widened to cover this unrelated capability, or vice versa.
+#
+# No wildcards. No arguments accepted. No shell commands. sha256sum itself
+# is deliberately NOT granted directly — only this fixed-purpose wrapper.
+#
+# Install (as root, on the VPS — never edit /etc/sudoers directly):
+#   sudo cp systemd/vedzovi-backup-verifier.sudoers /etc/sudoers.d/vedzovi-backup-verifier
+#   sudo chmod 440 /etc/sudoers.d/vedzovi-backup-verifier
+#   sudo visudo -cf /etc/sudoers.d/vedzovi-backup-verifier   # must print "parsed OK"
+#
+# Uninstall:
+#   sudo rm -f /etc/sudoers.d/vedzovi-backup-verifier
+
+agc ALL=(root) NOPASSWD: /usr/local/sbin/vedzovi-verify-backup
