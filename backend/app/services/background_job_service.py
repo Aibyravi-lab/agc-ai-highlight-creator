@@ -84,10 +84,14 @@ class BackgroundJobService:
                 f"Job Started: {job_id}"
             )
 
-            JobService.update_job(
-                job_id=job_id,
-                progress=1,
-                message="Pipeline Started"
+            # VED-ANALYTICS-005: start_processing() is the authoritative
+            # pending->processing transition (CAS-guarded, dispatches
+            # "Pipeline Started" exactly once) — replaces the old blind
+            # update_job() call here. update_job() itself is unchanged and
+            # still used below via PipelineService for in-flight progress
+            # reporting, which must not re-fire this event.
+            JobService.start_processing(
+                job_id=job_id
             )
 
             result = PipelineService.process_video(

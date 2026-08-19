@@ -3,7 +3,10 @@
 This document describes the PostHog event funnel added in AGC-081. It builds on the
 existing PostHog integration described in [`docs/analytics.md`](./analytics.md) — same
 setup, same env vars, same `track()` / `identify()` / `reset()` helper in
-`frontend/services/analytics.ts`. No new dependency was added and no backend changes were made.
+`frontend/services/analytics.ts`. No new dependency was added and no backend changes were made
+(AGC-081 was frontend-only; see [VED-ANALYTICS-005 — Backend-Authoritative Pipeline
+Lifecycle](#ved-analytics-005--backend-authoritative-pipeline-lifecycle) below for the events that
+were later moved server-side).
 
 ---
 
@@ -17,11 +20,12 @@ setup, same env vars, same `track()` / `identify()` / `reset()` helper in
 | `Email Verified` | `/verify-email` confirms the token successfully | `frontend/app/verify-email/page.tsx` |
 | `Login Success` | Login succeeds | `frontend/app/login/page.tsx` |
 | `Dashboard Viewed` | Dashboard content mounts (authenticated) | `frontend/app/dashboard/page.tsx` |
-| `Upload Started` | Video upload begins | `frontend/hooks/usePipeline.ts` |
-| `Upload Completed` | Video upload finishes | `frontend/hooks/usePipeline.ts` |
-| `Pipeline Started` | AI pipeline job is created | `frontend/hooks/usePipeline.ts` |
-| `Pipeline Completed` | AI pipeline job finishes successfully | `frontend/hooks/usePipeline.ts` |
-| `Highlights Generated` | Same moment as Pipeline Completed; includes `highlights_found` count | `frontend/hooks/usePipeline.ts` |
+| `Upload Started` / `upload_started` **(backend-authoritative)** | Upload passes every validation gate (maintenance, disk space, filename, extension, size, MIME, rate limit) and the backend commits to processing it | `backend/app/routers/upload.py` |
+| `Upload Completed` / `upload_completed` **(backend-authoritative)** | Backend has written the file to disk, validated duration, and cached the upload | `backend/app/routers/upload.py` |
+| `Pipeline Started` / `pipeline_started` **(backend-authoritative)** | Job actually transitions `pending` → `processing` on a worker thread — not merely created, and not tied to frontend polling | `backend/app/services/job_service.py` (`JobService.start_processing`) |
+| `Pipeline Completed` / `pipeline_completed` **(backend-authoritative)** | Job reaches the authoritative `completed` state; `Pipeline Completed` additionally carries `processing_time_seconds` when available | `backend/app/services/job_service.py` (`JobService.complete_job`) |
+| `pipeline_failed` **(backend-authoritative)** | Job reaches the authoritative `failed` state; carries `status: "failed"` only, never the raw error | `backend/app/services/job_service.py` (`JobService.fail_job`) |
+| `Highlights Generated` **(backend-authoritative)** | Same `complete_job()` transition as `Pipeline Completed`; includes `highlights_found` count | `backend/app/services/job_service.py` (`JobService.complete_job`) |
 | `Download Reel` | User downloads a horizontal or vertical reel (dashboard result, project card, or results panel) | `frontend/app/dashboard/page.tsx`, `frontend/components/ProjectsPanel.tsx`, `frontend/components/ResultPanel.tsx` |
 | `Download Thumbnail` | User downloads a thumbnail | same files as above |
 | `Project Deleted` | User confirms project deletion | `frontend/components/ProjectsPanel.tsx` |
@@ -31,7 +35,6 @@ setup, same env vars, same `track()` / `identify()` / `reset()` helper in
 | `Payment Failed` | Order creation fails, or Razorpay reports `payment.failed`; includes a `reason` string and a `failure_category` (see below) | `frontend/app/pricing/page.tsx` |
 | `Logout` | User signs out | `frontend/app/dashboard/page.tsx` |
 | `pricing_page_viewed` | Pricing page (`/pricing`) mounts | `frontend/app/pricing/page.tsx` |
-| `pipeline_failed` | Job polling observes a terminal `status: "failed"` job; fires once (polling stops immediately after) | `frontend/hooks/usePipeline.ts` |
 | `credits_exhausted_cta_viewed` | The "out of credits / Upgrade to Pro" CTA on the dashboard upload panel first becomes visible in a given mount | `frontend/components/UploadPanel.tsx` |
 | `credits_exhausted_cta_clicked` | User clicks the "Upgrade to Pro" link inside that CTA | `frontend/components/UploadPanel.tsx` |
 
@@ -40,7 +43,9 @@ equivalent firing in the codebase (e.g. `upload_started`, `pipeline_completed`, 
 `User Registered`, `User Logged In`, `Project Downloaded`). Per the "never remove business logic /
 preserve existing behavior" rule, those original calls were **left in place** and the new
 canonical event names were added alongside them at the same call sites, using the same `track()`
-helper. Nothing was renamed or removed, so no existing PostHog dashboard breaks.
+helper. Nothing was renamed or removed, so no existing PostHog dashboard breaks. VED-ANALYTICS-005
+carried this same dual-naming forward when moving these events server-side: both names are still
+sent, just from `AnalyticsService` instead of `track()` — see the dedicated section below.
 
 **Note on payment verification retries:** when a payment is captured by Razorpay but the
 backend verification call fails or times out (`verification_unconfirmed` state, with a manual
@@ -68,14 +73,12 @@ There is no `verification_failed` category: as noted above, a verification failu
 intentionally **not** tagged `Payment Failed` (the payment already succeeded), so no call site
 exists to attribute that category to.
 
-### `pricing_page_viewed` / `pipeline_failed` / credit-exhaustion CTA dedup
+### `pricing_page_viewed` / credit-exhaustion CTA dedup
 
 - `pricing_page_viewed` fires from a `useEffect(() => { ... }, [])` on mount, the same pattern as
   `Landing Page Viewed` and `Dashboard Viewed` — a checkout-state re-render never re-triggers it.
-- `pipeline_failed` fires only inside the polling branch that observes a terminal
-  `job.status === "failed"`. That branch calls `stopPolling()` immediately, so it can run at most
-  once per job. Transient polling/network errors (the `catch` around the poll `fetch`) never reach
-  this branch and never fire the event. No raw `job.error` text is sent — only `status`.
+  (`pipeline_failed`'s dedup used to live here too, via the polling branch that observed a
+  terminal `job.status === "failed"`; VED-ANALYTICS-005 moved it server-side — see below.)
 - `credits_exhausted_cta_viewed` fires once per `UploadPanel` mount, guarded by a ref that flips
   the first time `outOfCredits` becomes `true`; it does not re-fire on subsequent renders while the
   CTA stays visible.
@@ -95,6 +98,86 @@ date distinction. That counted same-day retries and repeated runs (e.g. re-runni
 twice in one sitting) as "returned", which is not a retention signal. This is a simple MVP
 return-usage signal, not a cohort retention model — it says nothing about time-to-return, churn,
 or repeat frequency, only whether the user has ever come back on a different day.
+
+---
+
+## VED-ANALYTICS-005 — Backend-Authoritative Pipeline Lifecycle
+
+VED-ANALYTICS-004's forensic audit of a 22→7 (`Upload Started` → `Highlights Generated`) funnel
+drop traced most of it to an instrumentation gap, not genuine pipeline failure: `Upload Started`,
+`Upload Completed`, `Pipeline Started`, `Pipeline Completed`, and `pipeline_failed` were all fired
+from `frontend/hooks/usePipeline.ts`, which depends on the originating browser tab staying open —
+for `Pipeline Completed`/`pipeline_failed`, for the entire AI processing duration. VED-ANALYTICS-002
+had already fixed this same flaw for `Highlights Generated` by moving it to the backend; this
+sprint completes the same reliability model for the rest of the pipeline lifecycle.
+
+### Which events are backend-authoritative vs. client-side
+
+| Backend-authoritative (fires regardless of browser/tab state) | Remains client-side (genuine UI/browser interaction) |
+|---|---|
+| `Upload Started` / `upload_started` | `Download Reel` / `Download Thumbnail` |
+| `Upload Completed` / `upload_completed` | `Upgrade Button Clicked` |
+| `Pipeline Started` / `pipeline_started` | `Checkout Started` |
+| `Pipeline Completed` / `pipeline_completed` | All other UI/navigation events in the table above |
+| `pipeline_failed` | |
+| `Highlights Generated` (VED-ANALYTICS-002) | |
+| `Payment Success` (VED-ANALYTICS-003) | |
+
+**Why backend lifecycle events are authoritative:** each one is now dispatched from the single
+place the underlying state transition actually, durably happens — a DB row flip or a successful
+disk write — rather than from a UI effect that only runs if the tab is still open to observe it:
+
+| Event | Authoritative source |
+|---|---|
+| `Upload Started` | `backend/app/routers/upload.py` — after every validation gate passes, before the file is written |
+| `Upload Completed` | `backend/app/routers/upload.py` — after the file is written, duration-validated, and cached |
+| `Pipeline Started` | `JobService.start_processing()` — the `pending`→`processing` DB transition, called once from `BackgroundJobService.run_pipeline()` |
+| `Pipeline Completed` | `JobService.complete_job()` — the `→ completed` DB transition |
+| `pipeline_failed` | `JobService.fail_job()` — the `→ failed` DB transition |
+| `Highlights Generated` | `JobService.complete_job()` (unchanged from VED-ANALYTICS-002) |
+
+### Exactly-once mechanism
+
+`Pipeline Completed` and `Highlights Generated` share `complete_job()`'s existing compare-and-swap
+UPDATE (`WHERE status != 'completed'`) — both are gated on the same `became_completed` flip, each
+in its own `try`/`except` so a failure in one can never suppress the other. `Pipeline Started` and
+`pipeline_failed` got their own new CAS guards following the identical pattern:
+`start_processing()` only flips (and fires) on `WHERE status = 'pending'`; `fail_job()` now guards
+`WHERE status NOT IN ('completed', 'failed')`, so a job already completed can never be clobbered
+into `failed` by a late/duplicate call, and a job already failed never double-fires. `Upload
+Started`/`Upload Completed` have no DB row to CAS against — they're a single straight-through
+function execution per HTTP request with no retry path, so natural once-per-request execution is
+the exactly-once guarantee. In every case, unattributed jobs (`user_id IS NULL` — legacy rows
+predating auth-required uploads) are skipped rather than fabricating an analytics identity, same
+as `Highlights Generated`.
+
+### Naming convention
+
+Every event that already had both a legacy snake_case name and a PascalCase name when it was
+client-side (`upload_started`/`Upload Started`, `pipeline_started`/`Pipeline Started`,
+`pipeline_completed`/`Pipeline Completed`) is still dual-tracked from the backend — two separate
+PostHog capture calls per lifecycle moment, so no existing dashboard built on either name breaks.
+`pipeline_failed` never had a PascalCase counterpart and still doesn't. `Pipeline Completed`
+(PascalCase only, matching the retired frontend call site) additionally carries
+`processing_time_seconds` when `result.stats.processing_time` is available. `Upload Completed`
+(PascalCase only) still carries the idempotent `$set: {first_upload_completed: true}` person
+property.
+
+### distinct_id convention
+
+Same as `Highlights Generated`/`Payment Success`: the backend integer `user_id`, stringified
+(`str(user_id)`), so backend-originated events land on the same PostHog person timeline as
+client-originated ones (see [User Properties](#user-properties) below for the frontend
+`identify()` side of this convention).
+
+### Failure isolation
+
+All five events go through `AnalyticsService`'s existing best-effort posture: dispatched on a
+2-worker `ThreadPoolExecutor` so a slow/unreachable PostHog call never blocks the request/job
+thread, wrapped in `try`/`except` at both the dispatch call site (`upload.py`, `job_service.py`)
+and inside `AnalyticsService` itself, and a no-op when `POSTHOG_API_KEY`/`POSTHOG_HOST` aren't
+configured. Analytics can never fail an upload, job creation, pipeline execution, or job
+completion/failure.
 
 ---
 
@@ -164,9 +247,12 @@ Only anonymous/user IDs already used by PostHog, event names, and the properties
 | `frontend/app/verify-email/page.tsx` | `Email Verified` |
 | `frontend/app/login/page.tsx` | `Login Success` |
 | `frontend/app/dashboard/page.tsx` | `Dashboard Viewed`, `Logout`, `Download Reel` / `Download Thumbnail` (primary result download) |
-| `frontend/hooks/usePipeline.ts` | `Upload Started`, `Upload Completed`, `Pipeline Started`, `Pipeline Completed`, `Highlights Generated`, `pipeline_failed` |
 | `frontend/components/ProjectsPanel.tsx` | `Download Reel`, `Download Thumbnail`, `Project Deleted` |
 | `frontend/components/ResultPanel.tsx` | `Download Reel`, `Download Thumbnail` |
-| `frontend/app/pricing/page.tsx` | `Upgrade Button Clicked`, `Checkout Started`, `Payment Success`, `Payment Failed` (+ `failure_category`), `pricing_page_viewed` |
+| `frontend/app/pricing/page.tsx` | `Upgrade Button Clicked`, `Checkout Started`, `Payment Failed` (+ `failure_category`), `pricing_page_viewed` |
 | `frontend/components/UploadPanel.tsx` | `credits_exhausted_cta_viewed`, `credits_exhausted_cta_clicked` |
 | `backend/app/services/mission_control_service.py` | `repeat_users` — distinct-calendar-date definition (GROW-007) |
+| `backend/app/services/analytics_service.py` | `AnalyticsService` — all backend-authoritative capture methods (VED-ANALYTICS-002/003/005) |
+| `backend/app/routers/upload.py` | `Upload Started` / `upload_started`, `Upload Completed` / `upload_completed` (VED-ANALYTICS-005) |
+| `backend/app/services/job_service.py` | `Pipeline Started` / `pipeline_started`, `Pipeline Completed` / `pipeline_completed`, `pipeline_failed`, `Highlights Generated` (VED-ANALYTICS-002/005) |
+| `backend/app/services/payment_service.py` | `Payment Success` (VED-ANALYTICS-003) |

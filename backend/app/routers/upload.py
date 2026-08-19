@@ -15,6 +15,7 @@ from fastapi import (
 
 from app.config.config import settings
 from app.dependencies import get_current_user
+from app.services.analytics_service import AnalyticsService
 from app.services.disk_space_service import DiskSpaceService
 from app.services.file_safety_service import FileSafetyService
 from app.services.logger_service import LoggerService
@@ -230,6 +231,24 @@ async def upload_video(
             }
         )
 
+    # VED-ANALYTICS-005: authoritative "Upload Started" — every prior gate
+    # (maintenance, disk space, filename, extension, size, MIME, rate
+    # limit) has passed, so the backend is now committing to this upload.
+    # Wrapped so a PostHog failure can never fail the upload itself.
+    try:
+
+        AnalyticsService.capture_upload_started(
+            user_id=user_id
+        )
+
+    except Exception as analytics_error:
+
+        LoggerService.error(
+            "event=analytics_dispatch_failed "
+            f"analytics_event=upload_started error={analytics_error}",
+            user_id=user_id
+        )
+
     # ── 6. Sanitize filename ──────────────────────────────────
     raw_stem = Path(bare_name).stem
     safe_stem = _sanitize_stem(raw_stem)
@@ -339,5 +358,24 @@ async def upload_video(
         size=file_size,
         upload_info=upload_info
     )
+
+    # VED-ANALYTICS-005: authoritative "Upload Completed" — file is
+    # written to disk, duration-validated, and cached. Fires only on this
+    # success path; any exception above (save failure, invalid metadata,
+    # video too long) returns before reaching here, so it is never
+    # double-counted against a failed upload.
+    try:
+
+        AnalyticsService.capture_upload_completed(
+            user_id=user_id
+        )
+
+    except Exception as analytics_error:
+
+        LoggerService.error(
+            "event=analytics_dispatch_failed "
+            f"analytics_event=upload_completed error={analytics_error}",
+            user_id=user_id
+        )
 
     return upload_info

@@ -234,6 +234,90 @@ class JobService:
         connection.close()
 
     @classmethod
+    def start_processing(
+        cls,
+        job_id: str
+    ) -> None:
+        """VED-ANALYTICS-005: the authoritative "Pipeline Started" moment —
+        the backend actually beginning work on a job, not the frontend
+        starting to poll for it. CAS-guarded the same way complete_job()
+        guards 'completed' (WHERE status = 'pending'), so this can only
+        ever flip the row — and fire analytics — once per job, even if
+        ever called more than once for the same job_id. This replaces the
+        generic JobService.update_job(progress=1, message="Pipeline
+        Started") call that used to run unconditionally at the top of
+        BackgroundJobService.run_pipeline(); update_job() itself is left
+        untouched since it's also used for the many in-flight progress
+        updates later in the pipeline (see pipeline_service.py), which
+        must not re-fire this event.
+        """
+
+        connection = (
+            DatabaseService.get_connection()
+        )
+
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            UPDATE jobs
+            SET
+                status = ?,
+                progress = ?,
+                message = ?,
+                started_at = ?
+            WHERE job_id = ?
+              AND status = 'pending'
+            """,
+            (
+                "processing",
+                1,
+                "Pipeline Started",
+                datetime.utcnow().isoformat(),
+                job_id
+            )
+        )
+
+        became_processing = cursor.rowcount == 1
+
+        owner_user_id = None
+
+        if became_processing:
+
+            cursor.execute(
+                "SELECT user_id FROM jobs WHERE job_id = ?",
+                (job_id,)
+            )
+
+            owner_row = cursor.fetchone()
+
+            owner_user_id = (
+                owner_row[0] if owner_row else None
+            )
+
+        connection.commit()
+        connection.close()
+
+        if became_processing and owner_user_id is not None:
+
+            try:
+
+                AnalyticsService.capture_pipeline_started(
+                    user_id=owner_user_id,
+                    job_id=job_id
+                )
+
+            except Exception as analytics_error:
+
+                LoggerService.error(
+                    "event=analytics_dispatch_failed "
+                    f"analytics_event=Pipeline Started job_id={job_id} "
+                    f"error={analytics_error}",
+                    job_id=job_id,
+                    user_id=owner_user_id
+                )
+
+    @classmethod
     def complete_job(
         cls,
         job_id: str,
@@ -342,12 +426,46 @@ class JobService:
                     user_id=owner_user_id
                 )
 
+            # VED-ANALYTICS-005: same exactly-once guarantee as Highlights
+            # Generated above (both are gated on the same became_completed
+            # CAS flip) — isolated in its own try/except so a PostHog
+            # failure on one event can never suppress the other.
+            try:
+
+                processing_time_seconds = (
+                    result.get("stats", {}).get("processing_time")
+                    if isinstance(result, dict)
+                    else None
+                )
+
+                AnalyticsService.capture_pipeline_completed(
+                    user_id=owner_user_id,
+                    job_id=job_id,
+                    processing_time_seconds=processing_time_seconds
+                )
+
+            except Exception as analytics_error:
+
+                LoggerService.error(
+                    "event=analytics_dispatch_failed "
+                    f"analytics_event=Pipeline Completed job_id={job_id} "
+                    f"error={analytics_error}",
+                    job_id=job_id,
+                    user_id=owner_user_id
+                )
+
     @classmethod
     def fail_job(
         cls,
         job_id: str,
         error: str
     ):
+        """VED-ANALYTICS-005: the WHERE clause is a compare-and-swap guard
+        (mirroring complete_job()'s own), added so this can never re-fire
+        "Pipeline Failed" for a job that already reached a terminal state,
+        and so a late/duplicate fail_job() call can never clobber a job
+        that already completed successfully.
+        """
 
         connection = (
             DatabaseService.get_connection()
@@ -364,6 +482,7 @@ class JobService:
                 error = ?,
                 completed_at = ?
             WHERE job_id = ?
+              AND status NOT IN ('completed', 'failed')
             """,
             (
                 "failed",
@@ -375,8 +494,44 @@ class JobService:
             )
         )
 
+        became_failed = cursor.rowcount == 1
+
+        owner_user_id = None
+
+        if became_failed:
+
+            cursor.execute(
+                "SELECT user_id FROM jobs WHERE job_id = ?",
+                (job_id,)
+            )
+
+            owner_row = cursor.fetchone()
+
+            owner_user_id = (
+                owner_row[0] if owner_row else None
+            )
+
         connection.commit()
         connection.close()
+
+        if became_failed and owner_user_id is not None:
+
+            try:
+
+                AnalyticsService.capture_pipeline_failed(
+                    user_id=owner_user_id,
+                    job_id=job_id
+                )
+
+            except Exception as analytics_error:
+
+                LoggerService.error(
+                    "event=analytics_dispatch_failed "
+                    f"analytics_event=pipeline_failed job_id={job_id} "
+                    f"error={analytics_error}",
+                    job_id=job_id,
+                    user_id=owner_user_id
+                )
 
     @classmethod
     def get_job_retention_reference_times(cls) -> dict:

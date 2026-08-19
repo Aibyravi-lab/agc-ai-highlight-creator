@@ -10,7 +10,6 @@ import {
   getJobStats,
   getProgress,
 } from "../services/api";
-import { track } from "../services/analytics";
 import { useAuth } from "../context/AuthContext";
 import { isFileTooLarge, getFileTooLargeMessage } from "../utils/uploadLimits";
 import type {
@@ -102,19 +101,14 @@ export function usePipeline() {
 
         if (job.status === "completed") {
           stopPolling();
-          track("pipeline_completed");
-          track(
-            "Pipeline Completed",
-            job.result?.stats?.processing_time != null
-              ? { processing_time_seconds: job.result.stats.processing_time }
-              : undefined
-          );
-          // "Highlights Generated" is no longer fired from here — it depends
-          // on this tab still being open when the job finishes, which
-          // undercounted production completions. It's now fired server-side
-          // from the authoritative completion path: see
-          // JobService.complete_job() (backend/app/services/job_service.py)
-          // and AnalyticsService.capture_highlights_generated().
+          // VED-ANALYTICS-005: "pipeline_completed"/"Pipeline Completed"
+          // and "Highlights Generated" are no longer fired from here —
+          // both depend on this tab still being open when the job
+          // finishes, which undercounted production completions. Both are
+          // now fired server-side from the authoritative completion path:
+          // see JobService.complete_job() (backend/app/services/job_service.py)
+          // and AnalyticsService.capture_pipeline_completed() /
+          // capture_highlights_generated().
           setState((prev) => {
             return { ...prev, result: job.result ?? null, loading: false, progress: 100, progressStatus: "Completed", currentJobId: null, selectedFile: null, successMessage: "Highlights generated successfully!", fileInputKey: prev.fileInputKey + 1 };
           });
@@ -123,12 +117,10 @@ export function usePipeline() {
           refreshUser();
         } else if (job.status === "failed") {
           stopPolling();
-          // Fires exactly once: this branch only runs on the terminal
-          // "failed" status, and stopPolling() prevents any further ticks
-          // for this job. job.error is intentionally omitted — it can
-          // contain raw backend exception text, which must never reach
-          // PostHog.
-          track("pipeline_failed", { status: job.status });
+          // VED-ANALYTICS-005: "pipeline_failed" is no longer fired from
+          // here for the same tab-dependency reason — it's now fired
+          // server-side from JobService.fail_job() via
+          // AnalyticsService.capture_pipeline_failed().
           setState((prev) => {
             return { ...prev, loading: false, error: job.error || "Processing failed", currentJobId: null };
           });
@@ -184,16 +176,17 @@ export function usePipeline() {
       });
 
       try {
-        track("upload_started");
-        track("Upload Started");
+        // VED-ANALYTICS-005: "Upload Started"/"Upload Completed" and
+        // "Pipeline Started" are no longer fired from here — they're now
+        // backend-authoritative (see backend/app/routers/upload.py and
+        // JobService.start_processing() in backend/app/services/job_service.py)
+        // so they no longer depend on this tab staying open.
         const uploadResponse = await uploadVideo(file);
 
         if (!uploadResponse.location) {
           throw new Error("Upload location missing");
         }
 
-        track("upload_completed");
-        track("Upload Completed", { $set: { first_upload_completed: true } });
         setState((prev) => {
           return { ...prev, progressStatus: "Starting pipeline...", progress: 10 };
         });
@@ -204,8 +197,6 @@ export function usePipeline() {
           throw new Error("Job ID missing from response");
         }
 
-        track("pipeline_started");
-        track("Pipeline Started");
         const jobId = startResponse.job_id;
 
         setState((prev) => {
