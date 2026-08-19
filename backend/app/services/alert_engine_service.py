@@ -38,7 +38,7 @@ class AlertEngineService:
         "ai_pipeline": "AI pipeline job failure rate crossed the configured warning/critical threshold.",
         "payments": "Payment failure count crossed the configured warning threshold in the rolling window.",
         "email": "Email send failure count crossed the configured warning threshold in the rolling window.",
-        "backups": "Backup missing, failed, stale, or not restore-verified.",
+        "backups": "Backup missing, failed, stale, archive-integrity check failed, or restore-test failed/never performed.",
         "growth_intelligence": "Mission Control summary computation failed.",
         # Deliberately no "self_recovery_backend"/"self_recovery_frontend"
         # entries here (VED-P1-018): those alerts are raised by record_alert()
@@ -60,7 +60,7 @@ class AlertEngineService:
         "ai_pipeline": "Check logs/agc.log for Whisper/OpenCV/FFmpeg errors in recent failed jobs.",
         "payments": "Check the Razorpay dashboard and RAZORPAY_KEY_ID/RAZORPAY_KEY_SECRET configuration.",
         "email": "Check RESEND_API_KEY configuration and the Resend delivery dashboard.",
-        "backups": "Run scripts/backup.sh manually and check the VPS cron schedule; investigate the failure in BACKUP_ROOT/logs.",
+        "backups": "Run scripts/backup.sh manually and check the VPS cron schedule (investigate the failure in BACKUP_ROOT/logs); if the restore-test has never run or failed, run scripts/restore_test.sh and check BACKUP_ROOT/last_restore_test_status.",
         "growth_intelligence": "Check backend logs for the MissionControlService exception; likely a downstream database or query failure.",
         "self_recovery_backend": "Check backend logs and journalctl -u agc-backend.service; the watchdog has exhausted its automatic recovery attempts for this hour — manual intervention is required.",
         "self_recovery_frontend": "Check journalctl -u agc-frontend.service; the watchdog has exhausted its automatic recovery attempts for this hour — manual intervention is required.",

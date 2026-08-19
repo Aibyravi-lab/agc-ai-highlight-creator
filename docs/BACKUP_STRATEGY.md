@@ -80,6 +80,7 @@ to the pipeline), update `scripts/backup.sh` and this table together.
         backup_2026-07-10_020000.log
         ...
     last_backup_status
+    last_restore_test_status
 ```
 
 Each run's archives and log are stamped with `YYYY-MM-DD_HHMMSS`. Because the
@@ -180,6 +181,42 @@ sudo crontab -l                                  # confirm the entry is present
 cat /opt/vedzovi-backups/last_backup_status       # after the next 2am run
 ```
 
+### Restore-test (not the same as the checksum check above)
+
+`sha256sum -c checksums.sha256` (run by `scripts/backup.sh` and by
+`HealthService.verify_backup_archive_integrity()`) only proves the archive
+*bytes* weren't corrupted or modified — it never extracts anything, so it
+cannot catch an archive that's checksum-clean but doesn't actually restore
+into a usable database.
+
+`scripts/restore_test.sh` closes that gap without touching production: it
+extracts the latest backup's archives into a throwaway directory under
+`/tmp`, runs `PRAGMA integrity_check;` against the *extracted* SQLite copy,
+validates the uploads/highlights/config archives landed their expected
+contents, and deletes the throwaway directory unconditionally on exit. It
+never invokes `scripts/restore.sh` and never writes to `backend/data/agc.db`,
+`backend/storage/`, `backend/.env`, nginx, systemd, or Let's Encrypt.
+
+```bash
+sudo bash scripts/restore_test.sh
+cat /opt/vedzovi-backups/last_restore_test_status   # "SUCCESS <ts>: <backup_dir>" or "FAILED <ts>: ..."
+```
+
+Recommended weekly cron (root's crontab), staggered after the nightly
+backup so it always tests the freshest one:
+
+```cron
+0 3 * * 0 /usr/bin/env bash /home/agc/agc-ai-highlight-creator/scripts/restore_test.sh >> /opt/vedzovi-backups/logs/restore_test_cron.log 2>&1
+```
+
+Like the backup cron itself, this is **documented only** — not installed
+automatically by any code change. `HealthEngineService._check_backups()`
+reads `last_restore_test_status` read-only via
+`HealthService.get_restore_test_status()`: until this file exists, the
+`backups` health check reports `warning` ("...restore-test has never been
+performed"), never `healthy` — a checksum-clean, fresh backup alone is not
+enough to claim the backup is actually restorable.
+
 ## Verifying backups are healthy
 
 ```bash
@@ -200,6 +237,9 @@ cat /opt/vedzovi-backups/2026-07-10_020000/manifest.txt
 # Spot-check archive contents without extracting
 tar -tzf /opt/vedzovi-backups/2026-07-10_020000/database.tar.gz
 tar -tzf /opt/vedzovi-backups/2026-07-10_020000/config.tar.gz
+
+# Actual restore-test (extracts + PRAGMA integrity_check, non-destructive)
+cat /opt/vedzovi-backups/last_restore_test_status
 ```
 
 ## Related documents

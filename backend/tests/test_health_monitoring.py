@@ -39,6 +39,7 @@ from app.services.database_service import DatabaseService
 from app.services.email_service import EmailService
 from app.services.health_engine_service import CheckStatus, HealthEngineService
 from app.services.health_history_service import HealthHistoryService
+from app.services.health_service import HealthService
 from app.services.health_scheduler_service import HealthSchedulerService
 from app.services.monitoring_event_service import MonitoringEventService
 from app.services.ops_service import OpsService
@@ -375,60 +376,106 @@ class HealthEngineCheckThresholdTests(unittest.TestCase):
             result = HealthEngineService._check_email()
         self.assertEqual(result["status"], CheckStatus.HEALTHY)
 
-    def test_backups_unknown_when_no_status_file(self):
-        with patch(
-            "app.services.health_engine_service.HealthService.get_backup_status",
-            return_value={"status": "unknown", "stale": None},
-        ), patch(
-            "app.services.health_engine_service.HealthService.verify_latest_backup_restorable",
-            return_value={"status": "unknown"},
-        ):
-            result = HealthEngineService._check_backups()
-        self.assertEqual(result["status"], CheckStatus.UNKNOWN)
+    # VED-BACKUP-FIX: _check_backups() now separates backup freshness,
+    # archive-integrity (checksums, zero extraction), and restore_test (an
+    # actual extraction + PRAGMA integrity_check via scripts/restore_test.sh)
+    # — a fresh, checksum-clean backup must not be reported "healthy"/
+    # restore-verified unless restore_test itself is verified.
 
-    def test_backups_critical_when_last_run_failed(self):
-        with patch(
-            "app.services.health_engine_service.HealthService.get_backup_status",
-            return_value={"status": "unhealthy", "stale": None},
-        ), patch(
-            "app.services.health_engine_service.HealthService.verify_latest_backup_restorable",
-            return_value={"status": "healthy"},
-        ):
-            result = HealthEngineService._check_backups()
-        self.assertEqual(result["status"], CheckStatus.CRITICAL)
+    def _patch_backup_signals(self, backup, archive_integrity, restore_test):
+        return patch.multiple(
+            "app.services.health_engine_service.HealthService",
+            get_backup_status=MagicMock(return_value=backup),
+            verify_backup_archive_integrity=MagicMock(return_value=archive_integrity),
+            get_restore_test_status=MagicMock(return_value=restore_test),
+        )
 
-    def test_backups_warning_when_stale(self):
-        with patch(
-            "app.services.health_engine_service.HealthService.get_backup_status",
-            return_value={"status": "healthy", "stale": True},
-        ), patch(
-            "app.services.health_engine_service.HealthService.verify_latest_backup_restorable",
-            return_value={"status": "healthy"},
-        ):
-            result = HealthEngineService._check_backups()
-        self.assertEqual(result["status"], CheckStatus.WARNING)
-
-    def test_backups_critical_when_restore_verification_fails(self):
-        with patch(
-            "app.services.health_engine_service.HealthService.get_backup_status",
-            return_value={"status": "healthy", "stale": False},
-        ), patch(
-            "app.services.health_engine_service.HealthService.verify_latest_backup_restorable",
-            return_value={"status": "unhealthy"},
-        ):
-            result = HealthEngineService._check_backups()
-        self.assertEqual(result["status"], CheckStatus.CRITICAL)
-
-    def test_backups_healthy_when_current_and_verified(self):
-        with patch(
-            "app.services.health_engine_service.HealthService.get_backup_status",
-            return_value={"status": "healthy", "stale": False},
-        ), patch(
-            "app.services.health_engine_service.HealthService.verify_latest_backup_restorable",
-            return_value={"status": "healthy"},
+    def test_backups_healthy_when_fresh_integrity_and_restore_test_verified(self):
+        with self._patch_backup_signals(
+            {"status": "healthy", "stale": False},
+            {"status": "healthy", "verified": True},
+            {"status": "healthy", "verified": True},
         ):
             result = HealthEngineService._check_backups()
         self.assertEqual(result["status"], CheckStatus.HEALTHY)
+        self.assertIn("restore-test passed", result["message"])
+
+    def test_backups_warning_when_restore_test_never_performed(self):
+        with self._patch_backup_signals(
+            {"status": "healthy", "stale": False},
+            {"status": "healthy", "verified": True},
+            {"status": "unknown", "verified": None},
+        ):
+            result = HealthEngineService._check_backups()
+        self.assertEqual(result["status"], CheckStatus.WARNING)
+        self.assertNotIn("restore-verified", result["message"])
+        self.assertIn("never been performed", result["message"])
+
+    def test_backups_critical_when_stale(self):
+        with self._patch_backup_signals(
+            {"status": "healthy", "stale": True},
+            {"status": "healthy", "verified": True},
+            {"status": "healthy", "verified": True},
+        ):
+            result = HealthEngineService._check_backups()
+        self.assertEqual(result["status"], CheckStatus.CRITICAL)
+
+    def test_backups_critical_when_checksum_mismatch(self):
+        with self._patch_backup_signals(
+            {"status": "healthy", "stale": False},
+            {"status": "unhealthy", "verified": False},
+            {"status": "healthy", "verified": True},
+        ):
+            result = HealthEngineService._check_backups()
+        self.assertEqual(result["status"], CheckStatus.CRITICAL)
+
+    def test_backups_critical_when_restore_test_fails(self):
+        with self._patch_backup_signals(
+            {"status": "healthy", "stale": False},
+            {"status": "healthy", "verified": True},
+            {"status": "unhealthy", "verified": False},
+        ):
+            result = HealthEngineService._check_backups()
+        self.assertEqual(result["status"], CheckStatus.CRITICAL)
+
+    def test_backups_critical_when_missing(self):
+        with self._patch_backup_signals(
+            {"status": "unknown", "stale": None},
+            {"status": "unknown", "verified": None},
+            {"status": "unknown", "verified": None},
+        ):
+            result = HealthEngineService._check_backups()
+        self.assertEqual(result["status"], CheckStatus.CRITICAL)
+
+    def test_backups_critical_when_last_run_failed(self):
+        with self._patch_backup_signals(
+            {"status": "unhealthy", "stale": None},
+            {"status": "healthy", "verified": True},
+            {"status": "healthy", "verified": True},
+        ):
+            result = HealthEngineService._check_backups()
+        self.assertEqual(result["status"], CheckStatus.CRITICAL)
+
+    def test_backups_message_never_claims_restore_verified_when_unknown(self):
+        for restore_test_status in ("unknown",):
+            with self._patch_backup_signals(
+                {"status": "healthy", "stale": False},
+                {"status": "healthy", "verified": True},
+                {"status": restore_test_status, "verified": None},
+            ):
+                result = HealthEngineService._check_backups()
+            self.assertNotIn("restore-verified", result["message"])
+
+    def test_backups_evidence_has_three_separate_keys(self):
+        with self._patch_backup_signals(
+            {"status": "healthy", "stale": False},
+            {"status": "healthy", "verified": True},
+            {"status": "unknown", "verified": None},
+        ):
+            result = HealthEngineService._check_backups()
+        self.assertEqual(
+            set(result["evidence"].keys()), {"backup", "archive_integrity", "restore_test"}
+        )
 
     def test_frontend_unknown_when_url_not_configured(self):
         original = settings.FRONTEND_URL
@@ -462,6 +509,61 @@ class HealthEngineCheckThresholdTests(unittest.TestCase):
         ):
             result = HealthEngineService._check_growth_intelligence()
         self.assertEqual(result["status"], CheckStatus.CRITICAL)
+
+
+class HealthServiceRestoreEvidenceTests(unittest.TestCase):
+    """Direct filesystem tests for the new restore-test sentinel parsing —
+    HealthService.get_restore_test_status() and the renamed
+    verify_backup_archive_integrity() — the concrete evidence _check_backups()
+    reads. Mirrors the existing (mock-only) engine-level backup tests but
+    exercises the real sentinel-file parsing, since nothing else does.
+    """
+
+    def setUp(self):
+        self._tmp_dir = tempfile.TemporaryDirectory()
+        self._original_backup_root = settings.BACKUP_ROOT
+        settings.BACKUP_ROOT = self._tmp_dir.name
+
+    def tearDown(self):
+        settings.BACKUP_ROOT = self._original_backup_root
+        self._tmp_dir.cleanup()
+
+    def test_restore_test_unknown_when_sentinel_missing(self):
+        result = HealthService.get_restore_test_status()
+        self.assertEqual(result["status"], "unknown")
+        self.assertIsNone(result["verified"])
+        self.assertIsNone(result["method"])
+
+    def test_restore_test_healthy_when_sentinel_reports_success(self):
+        sentinel = Path(settings.BACKUP_ROOT) / "last_restore_test_status"
+        sentinel.write_text("SUCCESS 2026-08-18_020000: 2026-08-18_020000", encoding="utf-8")
+
+        result = HealthService.get_restore_test_status()
+
+        self.assertEqual(result["status"], "healthy")
+        self.assertTrue(result["verified"])
+        self.assertEqual(result["backup_dir"], "2026-08-18_020000")
+        self.assertIsNotNone(result["tested_at"])
+        self.assertIsNotNone(result["method"])
+
+    def test_restore_test_unhealthy_when_sentinel_reports_failure(self):
+        sentinel = Path(settings.BACKUP_ROOT) / "last_restore_test_status"
+        sentinel.write_text(
+            "FAILED 2026-08-18_020000: 2026-08-18_020000 - PRAGMA integrity_check failed",
+            encoding="utf-8",
+        )
+
+        result = HealthService.get_restore_test_status()
+
+        self.assertEqual(result["status"], "unhealthy")
+        self.assertFalse(result["verified"])
+        self.assertEqual(result["backup_dir"], "2026-08-18_020000")
+
+    def test_archive_integrity_unknown_when_backup_root_missing(self):
+        settings.BACKUP_ROOT = str(Path(self._tmp_dir.name) / "does-not-exist")
+        result = HealthService.verify_backup_archive_integrity()
+        self.assertEqual(result["status"], "unknown")
+        self.assertIsNone(result["verified"])
 
 
 class HealthEngineEvaluateIntegrationTests(unittest.TestCase):

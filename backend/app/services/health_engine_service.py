@@ -360,30 +360,50 @@ class HealthEngineService:
 
     @classmethod
     def _check_backups(cls) -> dict:
+        """VED-BACKUP-FIX: three separate signals, never conflated —
+        (1) backup freshness/status, (2) archive-integrity (checksums,
+        zero extraction), (3) restore_test (an actual non-destructive
+        extraction + PRAGMA integrity_check, run out-of-band by
+        scripts/restore_test.sh). A fresh, checksum-clean backup whose
+        restore has never actually been test-extracted is WARNING, not
+        HEALTHY — the message must never claim "restore-verified" unless
+        restore_test.status == "healthy".
+        """
 
         backup = HealthService.get_backup_status()
-        restore = HealthService.verify_latest_backup_restorable()
+        archive_integrity = HealthService.verify_backup_archive_integrity()
+        restore_test = HealthService.get_restore_test_status()
 
         if backup.get("status") == "unknown":
-            status = CheckStatus.UNKNOWN
-            message = "No backup status recorded yet."
+            status = CheckStatus.CRITICAL
+            message = "No backup status recorded — backups may not be running."
         elif backup.get("status") == "unhealthy":
             status = CheckStatus.CRITICAL
             message = "Last backup run failed."
         elif backup.get("stale"):
-            status = CheckStatus.WARNING
-            message = f"Last successful backup is older than {settings.BACKUP_STALE_HOURS}h."
-        elif restore.get("status") == "unhealthy":
             status = CheckStatus.CRITICAL
-            message = "Latest backup failed restore-verification (checksum mismatch)."
+            message = f"Last successful backup is older than {settings.BACKUP_STALE_HOURS}h."
+        elif archive_integrity.get("status") != "healthy":
+            status = CheckStatus.CRITICAL
+            message = "Latest backup failed archive-integrity verification (checksum mismatch or corrupt archive)."
+        elif restore_test.get("status") == "unhealthy":
+            status = CheckStatus.CRITICAL
+            message = "Latest restore-test failed — backup may not actually be restorable."
+        elif restore_test.get("status") == "unknown":
+            status = CheckStatus.WARNING
+            message = "Backups current and archive-integrity verified, but an actual restore-test has never been performed."
         else:
             status = CheckStatus.HEALTHY
-            message = "Backups current and restore-verified."
+            message = "Backups current, archive-integrity verified, and restore-test passed."
 
         return {
             "status": status,
             "message": message,
-            "evidence": {"backup": backup, "restore_verification": restore},
+            "evidence": {
+                "backup": backup,
+                "archive_integrity": archive_integrity,
+                "restore_test": restore_test,
+            },
         }
 
     @classmethod

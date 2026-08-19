@@ -15,6 +15,7 @@ _DISK_WARNING_FREE_PERCENT = 15.0
 _SUBPROCESS_TIMEOUT_SECONDS = 3
 _BACKUP_TIMESTAMP_FORMAT = "%Y-%m-%d_%H%M%S"
 _CHECKSUM_READ_CHUNK_BYTES = 1024 * 1024
+_RESTORE_TEST_METHOD = "tmp_extraction+sqlite_pragma_integrity_check"
 
 
 class HealthService:
@@ -350,12 +351,18 @@ class HealthService:
             return {"status": "unknown", "last_result": None, "last_backup_at": None, "stale": None}
 
     @classmethod
-    def verify_latest_backup_restorable(cls) -> dict:
-        """Restore-verification without restoring: re-runs restore.sh's own
-        checksum pre-flight (SHA256 of every archive against
-        checksums.sha256 in the most recent backup directory) with zero
-        extraction and zero writes to any live file. Never invokes
-        restore.sh.
+    def verify_backup_archive_integrity(cls) -> dict:
+        """Archive-integrity check ONLY: re-runs restore.sh's own checksum
+        pre-flight (SHA256 of every archive against checksums.sha256 in the
+        most recent backup directory) with zero extraction and zero writes
+        to any live file. Never invokes restore.sh.
+
+        This is NOT a restore test — it proves the archive bytes are intact,
+        not that they actually extract into a usable database/config. It
+        does not know whether the backup can really be restored; see
+        get_restore_test_status() for that evidence, which comes from
+        scripts/restore_test.sh actually extracting a backup and running
+        PRAGMA integrity_check against the restored copy.
         """
 
         try:
@@ -387,6 +394,78 @@ class HealthService:
             }
         except Exception:
             return {"status": "unknown", "verified": None, "backup_dir": None}
+
+    @classmethod
+    def get_restore_test_status(cls) -> dict:
+        """Reads the restore-test sentinel scripts/restore_test.sh writes
+        after each run (BACKUP_ROOT/last_restore_test_status:
+        "SUCCESS <ts>: <backup_dir>" or "FAILED <ts>: <backup_dir_or_unknown>
+        - <reason>"). Read-only — this app never runs a restore test itself;
+        scripts/restore_test.sh is invoked out-of-band (cron/manual), the
+        same pattern as scripts/backup.sh and last_backup_status.
+
+        scripts/restore_test.sh actually extracts the latest backup's
+        archives into a throwaway /tmp directory and runs
+        PRAGMA integrity_check against the extracted SQLite copy — unlike
+        verify_backup_archive_integrity(), this is real evidence the backup
+        is restorable, not just that its checksums match. Until this
+        sentinel exists, restore capability is UNVERIFIED: status is
+        "unknown", never "healthy" — callers must not report a backup as
+        restore-verified on the strength of this method returning "unknown".
+        """
+
+        try:
+            status_path = Path(settings.BACKUP_ROOT) / "last_restore_test_status"
+
+            if not status_path.exists():
+                return {
+                    "status": "unknown",
+                    "verified": None,
+                    "tested_at": None,
+                    "backup_dir": None,
+                    "method": None,
+                }
+
+            content = status_path.read_text(encoding="utf-8", errors="ignore").strip()
+            parts = content.split(" ", 2)
+            result = parts[0] if parts else "UNKNOWN"
+            timestamp_token = parts[1].rstrip(":") if len(parts) > 1 else None
+            detail = parts[2].strip() if len(parts) > 2 else ""
+
+            tested_at_iso: Optional[str] = None
+            if timestamp_token:
+                try:
+                    tested_at = datetime.strptime(timestamp_token, _BACKUP_TIMESTAMP_FORMAT)
+                    tested_at_iso = tested_at.isoformat()
+                except ValueError:
+                    pass
+
+            if result == "SUCCESS":
+                status, verified = "healthy", True
+                backup_dir = detail or None
+            elif result == "FAILED":
+                status, verified = "unhealthy", False
+                backup_dir_token = detail.split(" - ", 1)[0].strip()
+                backup_dir = backup_dir_token if backup_dir_token and backup_dir_token != "unknown" else None
+            else:
+                status, verified = "unknown", None
+                backup_dir = None
+
+            return {
+                "status": status,
+                "verified": verified,
+                "tested_at": tested_at_iso,
+                "backup_dir": backup_dir,
+                "method": _RESTORE_TEST_METHOD if verified is not None else None,
+            }
+        except Exception:
+            return {
+                "status": "unknown",
+                "verified": None,
+                "tested_at": None,
+                "backup_dir": None,
+                "method": None,
+            }
 
     @classmethod
     def _verify_checksums(cls, backup_dir: Path, checksum_file: Path) -> bool:
