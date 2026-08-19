@@ -166,7 +166,12 @@ export default function PricingPage() {
       await refresh();
       setPendingPayment(null);
       setCheckoutState("done");
-      track("Payment Success");
+      // "Payment Success" is no longer fired from here — it depends on this
+      // tab still being open and the subscription refresh succeeding after
+      // verification, which undercounted production payments. It's now
+      // fired server-side from the authoritative processing path: see
+      // PaymentService.process_verified_payment() (backend/app/services/
+      // payment_service.py) and AnalyticsService.capture_payment_success().
     } catch {
       // Could be a genuine bad signature or a transient network/server
       // error — either way the payment was captured by Razorpay, so we

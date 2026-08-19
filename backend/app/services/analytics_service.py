@@ -87,3 +87,61 @@ class AnalyticsService:
                 job_id=job_id,
                 user_id=user_id
             )
+
+    @classmethod
+    def capture_payment_success(
+        cls,
+        *,
+        user_id: int,
+        plan: str,
+        payment_id: str
+    ) -> None:
+        # VED-ANALYTICS-003: same disabled-when-unconfigured guard as
+        # capture_highlights_generated — no PostHog call attempted unless
+        # both settings are present.
+
+        if not settings.POSTHOG_API_KEY or not settings.POSTHOG_HOST:
+            return
+
+        cls._executor.submit(
+            cls._send_payment_success,
+            user_id,
+            plan,
+            payment_id
+        )
+
+    @classmethod
+    def _send_payment_success(
+        cls,
+        user_id: int,
+        plan: str,
+        payment_id: str
+    ) -> None:
+
+        try:
+
+            requests.post(
+                f"{settings.POSTHOG_HOST}/capture/",
+                json={
+                    "api_key": settings.POSTHOG_API_KEY,
+                    "event": "Payment Success",
+                    "distinct_id": str(user_id),
+                    "properties": {
+                        # Deliberately excludes razorpay_order_id,
+                        # razorpay_payment_id, signature, and email — only
+                        # the plan is safe/useful for revenue analytics.
+                        "plan": plan,
+                        "$lib": "agc-backend"
+                    }
+                },
+                timeout=cls.CAPTURE_TIMEOUT_SECONDS
+            )
+
+        except Exception as error:
+
+            LoggerService.error(
+                "event=analytics_capture_failed "
+                f"analytics_event=Payment Success payment_id={payment_id} "
+                f"error={error}",
+                user_id=user_id
+            )

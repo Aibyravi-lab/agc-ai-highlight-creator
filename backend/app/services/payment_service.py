@@ -7,6 +7,7 @@ import razorpay
 from razorpay.errors import SignatureVerificationError
 
 from app.config.config import settings
+from app.services.analytics_service import AnalyticsService
 from app.services.database_service import DatabaseService
 from app.services.logger_service import LoggerService
 from app.services.monitoring_event_service import MonitoringEventService
@@ -361,6 +362,30 @@ class PaymentService:
             ) from exc
 
         connection.close()
+
+        # VED-ANALYTICS-003: this line only runs once per razorpay_payment_id
+        # — it's past the try block whose INSERT is the actual winner of the
+        # UNIQUE(razorpay_payment_id) race (see the class docstring above).
+        # The IntegrityError-loser and pre-existing-row branches both return
+        # earlier via _resolve_existing_payment, so they never reach here.
+        # Analytics dispatch is wrapped so a PostHog/executor failure can
+        # never turn an already-committed payment into an error response.
+        try:
+
+            AnalyticsService.capture_payment_success(
+                user_id=user_id,
+                plan=plan,
+                payment_id=razorpay_payment_id
+            )
+
+        except Exception as analytics_error:
+
+            LoggerService.error(
+                "event=analytics_dispatch_failed "
+                f"analytics_event=Payment Success "
+                f"payment_id={razorpay_payment_id} error={analytics_error}",
+                user_id=user_id
+            )
 
         return SubscriptionService.get_by_user_id(user_id)
 
