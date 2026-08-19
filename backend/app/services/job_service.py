@@ -6,6 +6,7 @@ from datetime import datetime
 from app.services.database_service import (
     DatabaseService
 )
+from app.services.analytics_service import AnalyticsService
 from app.services.auth_service import AuthService
 from app.services.subscription_service import SubscriptionService
 from app.services.job_storage_service import JobStorageService
@@ -238,6 +239,19 @@ class JobService:
         job_id: str,
         result: dict
     ):
+        """VED-ANALYTICS-002: the WHERE clause below is a compare-and-swap
+        guard, not just a filter — it makes this method idempotent. This
+        is the only place jobs.status becomes "completed" (called from
+        both BackgroundJobService._finish_job's normal-and-retry path and
+        JobService._commit_recovered_job's startup-reconciliation path),
+        so it doubles as the exactly-once boundary for the server-side
+        "Highlights Generated" analytics event: only the call whose UPDATE
+        actually flips the row (cursor.rowcount == 1) fires it. A second
+        call for an already-completed job_id (a retry, or a future
+        reconciliation pass finding nothing left to do) now matches zero
+        rows and is a true no-op instead of blindly re-writing identical
+        data and re-firing analytics.
+        """
 
         connection = (
             DatabaseService.get_connection()
@@ -255,6 +269,7 @@ class JobService:
                 result = ?,
                 completed_at = ?
             WHERE job_id = ?
+              AND status != 'completed'
             """,
             (
                 "completed",
@@ -269,8 +284,63 @@ class JobService:
             )
         )
 
+        became_completed = cursor.rowcount == 1
+
+        owner_user_id = None
+
+        if became_completed:
+
+            cursor.execute(
+                "SELECT user_id FROM jobs WHERE job_id = ?",
+                (job_id,)
+            )
+
+            owner_row = cursor.fetchone()
+
+            owner_user_id = (
+                owner_row[0] if owner_row else None
+            )
+
         connection.commit()
         connection.close()
+
+        if became_completed and owner_user_id is not None:
+
+            # Unattributed jobs (user_id IS NULL) never get an analytics
+            # identity fabricated for them — same philosophy as the
+            # external/internal/unattributed job segmentation in
+            # MissionControlService._get_live_metrics. The try/except is
+            # deliberately here, not just inside AnalyticsService: a job
+            # that already completed successfully (this line only runs
+            # after the DB commit above) must never be treated as failed
+            # by its caller because analytics dispatch itself raised
+            # (e.g. the executor rejecting work during shutdown).
+            try:
+
+                # Real shape is result["stats"]["highlights_found"] (see
+                # StatsService.build_stats / pipeline_service.py), not a
+                # top-level result["highlights_found"].
+                highlights_found = (
+                    result.get("stats", {}).get("highlights_found")
+                    if isinstance(result, dict)
+                    else None
+                )
+
+                AnalyticsService.capture_highlights_generated(
+                    user_id=owner_user_id,
+                    job_id=job_id,
+                    highlights_found=highlights_found
+                )
+
+            except Exception as analytics_error:
+
+                LoggerService.error(
+                    "event=analytics_dispatch_failed "
+                    f"analytics_event=Highlights Generated job_id={job_id} "
+                    f"error={analytics_error}",
+                    job_id=job_id,
+                    user_id=owner_user_id
+                )
 
     @classmethod
     def fail_job(

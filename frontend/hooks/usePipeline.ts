@@ -109,9 +109,12 @@ export function usePipeline() {
               ? { processing_time_seconds: job.result.stats.processing_time }
               : undefined
           );
-          track("Highlights Generated", {
-            highlights_found: job.result?.highlights_found ?? 0,
-          });
+          // "Highlights Generated" is no longer fired from here — it depends
+          // on this tab still being open when the job finishes, which
+          // undercounted production completions. It's now fired server-side
+          // from the authoritative completion path: see
+          // JobService.complete_job() (backend/app/services/job_service.py)
+          // and AnalyticsService.capture_highlights_generated().
           setState((prev) => {
             return { ...prev, result: job.result ?? null, loading: false, progress: 100, progressStatus: "Completed", currentJobId: null, selectedFile: null, successMessage: "Highlights generated successfully!", fileInputKey: prev.fileInputKey + 1 };
           });

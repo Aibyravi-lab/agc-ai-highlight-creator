@@ -531,6 +531,24 @@ class Settings(BaseSettings):
         ""
     )
 
+    # VED-ANALYTICS-002: same PostHog project the frontend already uses
+    # (see frontend/instrumentation-client.ts / NEXT_PUBLIC_POSTHOG_KEY).
+    # PostHog project API keys are write-only/public by design — this is
+    # not a new secret, just the same key reused server-side so job
+    # completion can be tracked from the authoritative backend event
+    # instead of depending on the browser tab staying open. Both empty by
+    # default; AnalyticsService no-ops when either is unset, mirroring the
+    # frontend's own `if (key && host)` guard.
+    POSTHOG_API_KEY: str = os.getenv(
+        "POSTHOG_API_KEY",
+        ""
+    )
+
+    POSTHOG_HOST: str = os.getenv(
+        "POSTHOG_HOST",
+        ""
+    )
+
     # AGC-070: email verification, reusing the same token/expiry pattern as
     # password reset. Links live longer (24h) since verification is not as
     # time-sensitive as a password reset.
