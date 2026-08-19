@@ -1,14 +1,19 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { verifyEmail } from "../../services/auth";
 import { track } from "../../services/analytics";
 
 type VerifyState = "loading" | "success" | "error";
 
+// Time the success card stays visible before auto-navigating to /login.
+// Long enough to read the confirmation, short enough to not feel stuck.
+const AUTO_REDIRECT_DELAY_MS = 1500;
+
 function VerifyEmailContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token") || "";
 
@@ -18,6 +23,7 @@ function VerifyEmailContent() {
   const [message, setMessage] = useState(
     token ? "" : "This verification link is missing or invalid."
   );
+  const [verifiedEmail, setVerifiedEmail] = useState("");
 
   useEffect(() => {
     if (!token) return;
@@ -28,6 +34,7 @@ function VerifyEmailContent() {
       .then((res) => {
         if (cancelled) return;
         setMessage(res.message);
+        setVerifiedEmail(res.email || "");
         setState("success");
         track("Email Verified");
       })
@@ -41,6 +48,24 @@ function VerifyEmailContent() {
       cancelled = true;
     };
   }, [token]);
+
+  useEffect(() => {
+    if (state !== "success") return;
+
+    const loginHref = verifiedEmail
+      ? `/login?email=${encodeURIComponent(verifiedEmail)}`
+      : "/login";
+
+    const timer = setTimeout(() => {
+      router.replace(loginHref);
+    }, AUTO_REDIRECT_DELAY_MS);
+
+    return () => clearTimeout(timer);
+  }, [state, verifiedEmail, router]);
+
+  const loginHref = verifiedEmail
+    ? `/login?email=${encodeURIComponent(verifiedEmail)}`
+    : "/login";
 
   return (
     <div className="min-h-screen bg-[#08090d] flex items-center justify-center px-4">
@@ -68,11 +93,14 @@ function VerifyEmailContent() {
                 {message || "Your email has been verified successfully."}
               </p>
               <Link
-                href="/login"
+                href={loginHref}
                 className="block w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 rounded-lg text-sm transition-colors"
               >
                 Sign in
               </Link>
+              <p className="text-gray-600 text-xs mt-4">
+                Taking you to sign in…
+              </p>
             </>
           )}
 

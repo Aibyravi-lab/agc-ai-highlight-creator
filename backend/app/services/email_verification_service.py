@@ -1,6 +1,7 @@
 import hashlib
 import secrets
 from datetime import datetime, timedelta
+from typing import Optional
 
 from app.config.config import settings
 from app.services.auth_service import AuthService
@@ -87,7 +88,14 @@ class EmailVerificationService:
     def verify(
         cls,
         token: str
-    ) -> bool:
+    ) -> Optional[str]:
+        """
+        Returns the verified account's email on success, None on an
+        invalid/expired/already-used token. The email is not a secret
+        (it's the address the user just proved they control by clicking
+        the link) so returning it lets the caller pre-fill the sign-in
+        form without granting any session/auth token here.
+        """
 
         token_hash = cls._hash_token(token)
 
@@ -115,7 +123,7 @@ class EmailVerificationService:
 
             connection.close()
 
-            return False
+            return None
 
         cursor.execute(
             """
@@ -139,9 +147,20 @@ class EmailVerificationService:
 
         connection.commit()
 
+        cursor.execute(
+            """
+            SELECT email
+            FROM users
+            WHERE id = ?
+            """,
+            (user_id,)
+        )
+
+        email = cursor.fetchone()[0]
+
         connection.close()
 
-        return True
+        return email
 
     @classmethod
     def resend(

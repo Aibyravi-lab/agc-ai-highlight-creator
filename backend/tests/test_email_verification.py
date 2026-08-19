@@ -197,6 +197,13 @@ class EmailVerificationServiceTests(unittest.TestCase):
         user = AuthService.get_user_by_id(self.user["id"])
         self.assertTrue(user["email_verified"])
 
+    def test_verification_returns_the_verified_email(self):
+        token = self._issue_token()
+
+        result = EmailVerificationService.verify(token)
+
+        self.assertEqual(result, self.user["email"])
+
     def test_token_cannot_be_reused(self):
         token = self._issue_token()
 

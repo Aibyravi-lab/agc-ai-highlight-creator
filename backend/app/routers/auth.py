@@ -324,20 +324,27 @@ def verify_email(
             detail=RATE_LIMIT_MESSAGE
         )
 
-    verified = EmailVerificationService.verify(
+    email = EmailVerificationService.verify(
         body.token
     )
 
-    if not verified:
+    if not email:
 
         raise HTTPException(
             status_code=400,
             detail="Invalid or expired verification token"
         )
 
+    # AGC-070 deliberately keeps verify-email from issuing a session/access
+    # token: the token in this URL is a bearer link that can leak (forwarded
+    # mail, shared inboxes, link-scanning proxies), so possession of it must
+    # not be sufficient to authenticate. `email` here is not a secret — it's
+    # the address the caller just proved they control — and is returned only
+    # to let the frontend pre-fill the sign-in form, not to grant access.
     return {
         "success": True,
-        "message": "Email verified successfully. You can now log in."
+        "message": "Email verified successfully. You can now log in.",
+        "email": email
     }
 
 
