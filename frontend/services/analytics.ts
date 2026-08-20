@@ -55,7 +55,11 @@ type AnalyticsEvent =
   | "credits_exhausted_cta_viewed"
   | "credits_exhausted_cta_clicked"
   // VED-GROWTH-001 contextual result-panel upgrade CTA
-  | "result_upgrade_cta_clicked";
+  | "result_upgrade_cta_clicked"
+  // VED-GROWTH-001 Slice 2 — verified→first-upload diagnostic
+  | "dashboard_first_visit_empty"
+  | "upload_ui_seen"
+  | "file_selected";
 
 // Analytics must never break the user flow — every call is wrapped so a
 // PostHog/network failure is swallowed instead of propagating into caller code.

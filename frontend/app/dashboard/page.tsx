@@ -18,6 +18,7 @@ import { FeedbackCard } from "../../components/FeedbackCard";
 import { useAuth } from "../../context/AuthContext";
 import { track, reset } from "../../services/analytics";
 import { downloadReel, downloadVerticalReel, downloadThumbnail } from "../../services/api";
+import { hasZeroJobs, shouldTrackDashboardFirstVisitEmpty } from "../../utils/firstUploadDiagnostics";
 import type { AuthUser } from "../../types/auth";
 import type { ExtendedPipelineResult, PipelineJob } from "../../types/pipeline";
 
@@ -87,6 +88,23 @@ function DashboardContent({
   useEffect(() => {
     track("Dashboard Viewed");
   }, []);
+
+  // VED-GROWTH-001 Slice 2: zeroJobs is null-safe on jobStats — false both
+  // while jobStats is still loading and once the user has any job, so the
+  // diagnostic events below never fire prematurely or for returning users.
+  const zeroJobs = hasZeroJobs(jobStats);
+  const hasTrackedEmptyVisitRef = useRef(false);
+  useEffect(() => {
+    if (
+      shouldTrackDashboardFirstVisitEmpty({
+        jobStats,
+        alreadyTracked: hasTrackedEmptyVisitRef.current,
+      })
+    ) {
+      hasTrackedEmptyVisitRef.current = true;
+      track("dashboard_first_visit_empty");
+    }
+  }, [jobStats]);
 
   const handleLogout = () => {
     track("logout");
@@ -192,6 +210,7 @@ function DashboardContent({
             isPro={isPro}
             subscriptionLoading={subscriptionLoading}
             maintenanceMode={maintenanceMode}
+            zeroJobs={zeroJobs}
           />
         </section>
 

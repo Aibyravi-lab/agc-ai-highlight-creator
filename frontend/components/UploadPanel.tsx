@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { MAX_UPLOAD_SIZE_MB, MAX_VIDEO_DURATION_MINUTES } from "../utils/uploadLimits";
 import { isUploadInteractionDisabled, isGenerateDisabled } from "../utils/uploadPanelState";
+import { shouldTrackUploadUiSeen } from "../utils/firstUploadDiagnostics";
 import { track } from "../services/analytics";
 
 interface UploadPanelProps {
@@ -17,6 +18,7 @@ interface UploadPanelProps {
   isPro?: boolean;
   subscriptionLoading?: boolean;
   maintenanceMode?: boolean;
+  zeroJobs: boolean;
 }
 
 const SUPPORTED_FORMATS_LABEL = "MP4 • MOV • AVI • MKV";
@@ -46,6 +48,7 @@ export function UploadPanel({
   isPro = false,
   subscriptionLoading = false,
   maintenanceMode = false,
+  zeroJobs,
 }: UploadPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -64,6 +67,26 @@ export function UploadPanel({
     }
   }, [outOfCredits]);
 
+  // VED-GROWTH-001 Slice 2: fires once when the upload UI is actually
+  // usable (not blocked by maintenance, still-loading subscription, or
+  // exhausted credits) for a user who has zero jobs — same once-per-mount
+  // ref-guard pattern as credits_exhausted_cta_viewed above.
+  const hasTrackedUploadUiSeenRef = useRef(false);
+  useEffect(() => {
+    if (
+      shouldTrackUploadUiSeen({
+        zeroJobs,
+        maintenanceMode,
+        subscriptionLoading,
+        outOfCredits,
+        alreadyTracked: hasTrackedUploadUiSeenRef.current,
+      })
+    ) {
+      hasTrackedUploadUiSeenRef.current = true;
+      track("upload_ui_seen");
+    }
+  }, [zeroJobs, maintenanceMode, subscriptionLoading, outOfCredits]);
+
   const handleUpgradeCtaClick = () => {
     track("credits_exhausted_cta_clicked");
   };
@@ -77,6 +100,7 @@ export function UploadPanel({
 
   const handleFiles = (files: FileList | null) => {
     if (files && files.length > 0) {
+      track("file_selected");
       onSelectFile(files[0]);
     }
   };

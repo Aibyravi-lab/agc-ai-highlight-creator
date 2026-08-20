@@ -37,6 +37,9 @@ were later moved server-side).
 | `pricing_page_viewed` | Pricing page (`/pricing`) mounts | `frontend/app/pricing/page.tsx` |
 | `credits_exhausted_cta_viewed` | The "out of credits / Upgrade to Pro" CTA on the dashboard upload panel first becomes visible in a given mount | `frontend/components/UploadPanel.tsx` |
 | `credits_exhausted_cta_clicked` | User clicks the "Upgrade to Pro" link inside that CTA | `frontend/components/UploadPanel.tsx` |
+| `dashboard_first_visit_empty` | Authenticated dashboard mounts and `jobStats` has loaded with zero jobs in every status (queued/running/completed/failed) | `frontend/app/dashboard/page.tsx` |
+| `upload_ui_seen` | The upload UI becomes actually usable (not blocked by maintenance mode, still-loading subscription, or exhausted credits) for a user with zero jobs | `frontend/components/UploadPanel.tsx` |
+| `file_selected` | User picks a video file via the file picker or drag-and-drop, for any user (not gated to zero-job users) | `frontend/components/UploadPanel.tsx` |
 
 **Note on pre-existing events:** several events from AGC-081's spec already had a differently-named
 equivalent firing in the codebase (e.g. `upload_started`, `pipeline_completed`, `logout`,
@@ -85,6 +88,35 @@ exists to attribute that category to.
 - `credits_exhausted_cta_clicked` fires from the CTA `Link`'s `onClick`, in addition to (not instead
   of) its normal navigation to `/pricing`. It is a distinct signal from `Upgrade Button Clicked`,
   which is preserved unchanged and only fires from the pricing page itself.
+
+---
+
+## VED-GROWTH-001 Slice 2 — Verified→First-Upload Diagnostic
+
+Measurement-only instrumentation to understand why verified users do not reach their first
+upload. No backend/database/payment/pipeline changes; no onboarding UX or dashboard redesign.
+
+- `dashboard_first_visit_empty` fires from a `useEffect(() => { ... }, [jobStats])` in
+  `frontend/app/dashboard/page.tsx`, gated on `jobStats !== null` (job counts have loaded) and the
+  sum of `queued + running + completed + failed` being zero. `jobStats` starts `null` until
+  `usePipeline`'s mount effect resolves, so the event cannot fire before job data is known, and it
+  never fires for a user who has any job in any status. A `useRef` guard fires it at most once per
+  mount even though the effect re-runs on every `jobStats` poll (the 5s interval in `usePipeline`).
+- `upload_ui_seen` fires from a `useEffect` in `frontend/components/UploadPanel.tsx`, gated on the
+  same zero-jobs signal (passed down as the `zeroJobs` prop) **and** the upload UI being actually
+  usable: `!maintenanceMode && !subscriptionLoading && !outOfCredits`. `subscriptionLoading` is
+  checked explicitly because `outOfCredits` alone reads as `false` while the subscription is still
+  resolving, which would otherwise let the event fire before credit status is actually known. Its
+  own `useRef` guard fires it at most once per mount.
+- `file_selected` fires directly from `UploadPanel`'s `handleFiles`, covering both the file-picker
+  and drag-and-drop paths, for any user — no existing "file selected" event was found to reuse, and
+  it isn't gated to zero-job users since it's a generic, reusable upload-interaction signal.
+- The fire-once boolean logic for the first two events (`hasZeroJobs`, `shouldTrackDashboardFirstVisitEmpty`,
+  `shouldTrackUploadUiSeen`) lives in `frontend/utils/firstUploadDiagnostics.ts`, extracted the same
+  way `uploadPanelState.ts` and `resultUpgradeCta.ts` were — this project has no
+  jsdom/React-testing-library, so the pure decision functions are what's actually unit-tested
+  (`frontend/utils/firstUploadDiagnostics.test.ts`), with static-source drift guards proving the
+  components wire up to them.
 
 ### Repeat-user definition (corrected)
 
@@ -250,7 +282,8 @@ Only anonymous/user IDs already used by PostHog, event names, and the properties
 | `frontend/components/ProjectsPanel.tsx` | `Download Reel`, `Download Thumbnail`, `Project Deleted` |
 | `frontend/components/ResultPanel.tsx` | `Download Reel`, `Download Thumbnail` |
 | `frontend/app/pricing/page.tsx` | `Upgrade Button Clicked`, `Checkout Started`, `Payment Failed` (+ `failure_category`), `pricing_page_viewed` |
-| `frontend/components/UploadPanel.tsx` | `credits_exhausted_cta_viewed`, `credits_exhausted_cta_clicked` |
+| `frontend/components/UploadPanel.tsx` | `credits_exhausted_cta_viewed`, `credits_exhausted_cta_clicked`, `upload_ui_seen`, `file_selected` |
+| `frontend/utils/firstUploadDiagnostics.ts` | Pure fire-once decisions for `dashboard_first_visit_empty` / `upload_ui_seen` |
 | `backend/app/services/mission_control_service.py` | `repeat_users` — distinct-calendar-date definition (GROW-007) |
 | `backend/app/services/analytics_service.py` | `AnalyticsService` — all backend-authoritative capture methods (VED-ANALYTICS-002/003/005) |
 | `backend/app/routers/upload.py` | `Upload Started` / `upload_started`, `Upload Completed` / `upload_completed` (VED-ANALYTICS-005) |
