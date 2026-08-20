@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
   downloadReel,
   downloadVerticalReel,
@@ -10,10 +11,14 @@ import {
 import { track } from "../services/analytics";
 import { useAuthedMediaUrl } from "../hooks/useAuthedMediaUrl";
 import { selectDisplayReasons } from "../utils/highlightReasons";
+import { shouldShowResultUpgradeCta } from "../utils/resultUpgradeCta";
 import type { ExtendedPipelineResult, HighlightItem } from "../types/pipeline";
 
 interface ResultPanelProps {
   result: ExtendedPipelineResult | null;
+  isPro?: boolean;
+  creditsRemaining?: number;
+  subscriptionLoading?: boolean;
 }
 
 function CopyButton({ text, label }: { text: string; label: string }) {
@@ -114,7 +119,12 @@ function HighlightClipPreview({ clipPath }: { clipPath?: string }) {
   );
 }
 
-export function ResultPanel({ result }: ResultPanelProps) {
+export function ResultPanel({
+  result,
+  isPro = false,
+  creditsRemaining,
+  subscriptionLoading = false,
+}: ResultPanelProps) {
   const reelUrl = useAuthedMediaUrl(result?.final_reel);
 
   if (!result) return null;
@@ -126,6 +136,15 @@ export function ResultPanel({ result }: ResultPanelProps) {
   const hasAnyDownload = hasReel || hasVertical || hasThumbnail || hasResultJson;
   const hasHighlights =
     result.all_highlights && result.all_highlights.length > 0;
+
+  const showUpgradeCta = shouldShowResultUpgradeCta({
+    isPro,
+    subscriptionLoading,
+  });
+
+  const handleUpgradeCtaClick = () => {
+    track("result_upgrade_cta_clicked");
+  };
 
   return (
     <div className="rounded-xl border border-[#1e2030] bg-[#0f1117] overflow-hidden">
@@ -323,6 +342,31 @@ export function ResultPanel({ result }: ResultPanelProps) {
                 }
               )}
             </div>
+          </div>
+        )}
+
+        {/* VED-GROWTH-001: contextual upgrade CTA — secondary to the result
+            itself (bottom of the panel, below downloads/preview/gallery) so
+            it never competes with actually receiving the generated value. */}
+        {showUpgradeCta && (
+          <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-white">Enjoying your highlights?</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {typeof creditsRemaining === "number"
+                  ? `You have ${creditsRemaining} free highlight${
+                      creditsRemaining === 1 ? "" : "s"
+                    } left. Upgrade to Pro for unlimited generations.`
+                  : "Upgrade to Pro for unlimited generations."}
+              </p>
+            </div>
+            <Link
+              href="/pricing"
+              onClick={handleUpgradeCtaClick}
+              className="shrink-0 inline-block text-center bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-colors"
+            >
+              Upgrade to Pro
+            </Link>
           </div>
         )}
       </div>

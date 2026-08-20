@@ -237,7 +237,12 @@ function DashboardContent({
         {result && (
           <section className="space-y-6">
             <DownloadPanel result={result} />
-            <ResultPanel result={result} />
+            <ResultPanel
+              result={result}
+              isPro={isPro}
+              creditsRemaining={user.credits_remaining}
+              subscriptionLoading={subscriptionLoading}
+            />
             {!feedbackDismissed && (
               <FeedbackCard
                 projectId={result.project_id ?? null}
