@@ -36,6 +36,14 @@ export interface UploadUiSeenAvailability {
   subscriptionLoading: boolean;
   outOfCredits: boolean;
   alreadyTracked: boolean;
+  // Ordering guard: zeroJobs true implies dashboard_first_visit_empty's own
+  // gate (hasZeroJobs on the same jobStats) is also satisfied, so this flag
+  // is guaranteed to eventually become true whenever upload_ui_seen's other
+  // conditions hold — it only delays firing, it never blocks it outright.
+  // That extra render cycle (parent commits the tracked flag, then this
+  // effect re-runs) is what makes dashboard_first_visit_empty precede
+  // upload_ui_seen deterministically, without a timer.
+  dashboardFirstVisitEmptyTracked: boolean;
 }
 
 export function shouldTrackUploadUiSeen({
@@ -44,12 +52,14 @@ export function shouldTrackUploadUiSeen({
   subscriptionLoading,
   outOfCredits,
   alreadyTracked,
+  dashboardFirstVisitEmptyTracked,
 }: UploadUiSeenAvailability): boolean {
   return (
     !alreadyTracked &&
     zeroJobs &&
     !maintenanceMode &&
     !subscriptionLoading &&
-    !outOfCredits
+    !outOfCredits &&
+    dashboardFirstVisitEmptyTracked
   );
 }

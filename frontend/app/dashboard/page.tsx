@@ -93,18 +93,26 @@ function DashboardContent({
   // while jobStats is still loading and once the user has any job, so the
   // diagnostic events below never fire prematurely or for returning users.
   const zeroJobs = hasZeroJobs(jobStats);
-  const hasTrackedEmptyVisitRef = useRef(false);
+  // VED-GROWTH-001 ordering fix: this is state (not a ref) so setting it
+  // triggers a re-render that flows down to UploadPanel as a prop. Child
+  // effects normally commit before parent effects in the same React flush,
+  // which let upload_ui_seen (child) fire before dashboard_first_visit_empty
+  // (parent) when both became eligible in the same update. Gating
+  // upload_ui_seen on this flag forces it into the *next* commit, after
+  // dashboard_first_visit_empty has already fired — deterministic ordering
+  // with no timers.
+  const [dashboardFirstVisitEmptyTracked, setDashboardFirstVisitEmptyTracked] = useState(false);
   useEffect(() => {
     if (
       shouldTrackDashboardFirstVisitEmpty({
         jobStats,
-        alreadyTracked: hasTrackedEmptyVisitRef.current,
+        alreadyTracked: dashboardFirstVisitEmptyTracked,
       })
     ) {
-      hasTrackedEmptyVisitRef.current = true;
+      setDashboardFirstVisitEmptyTracked(true);
       track("dashboard_first_visit_empty");
     }
-  }, [jobStats]);
+  }, [jobStats, dashboardFirstVisitEmptyTracked]);
 
   const handleLogout = () => {
     track("logout");
@@ -211,6 +219,7 @@ function DashboardContent({
             subscriptionLoading={subscriptionLoading}
             maintenanceMode={maintenanceMode}
             zeroJobs={zeroJobs}
+            dashboardFirstVisitEmptyTracked={dashboardFirstVisitEmptyTracked}
           />
         </section>
 

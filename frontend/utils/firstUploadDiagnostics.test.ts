@@ -68,7 +68,7 @@ test("dashboard_first_visit_empty does not re-fire once already tracked, even on
   );
 });
 
-test("upload_ui_seen fires when the upload UI is actually usable for a zero-job user", () => {
+test("upload_ui_seen fires when the upload UI is actually usable for a zero-job user, after dashboard_first_visit_empty has already been tracked", () => {
   assert.equal(
     shouldTrackUploadUiSeen({
       zeroJobs: true,
@@ -76,6 +76,7 @@ test("upload_ui_seen fires when the upload UI is actually usable for a zero-job 
       subscriptionLoading: false,
       outOfCredits: false,
       alreadyTracked: false,
+      dashboardFirstVisitEmptyTracked: true,
     }),
     true
   );
@@ -89,6 +90,7 @@ test("upload_ui_seen does not fire for a user who already has jobs", () => {
       subscriptionLoading: false,
       outOfCredits: false,
       alreadyTracked: false,
+      dashboardFirstVisitEmptyTracked: true,
     }),
     false
   );
@@ -102,6 +104,7 @@ test("upload_ui_seen does not fire during maintenance mode, even for a zero-job 
       subscriptionLoading: false,
       outOfCredits: false,
       alreadyTracked: false,
+      dashboardFirstVisitEmptyTracked: true,
     }),
     false
   );
@@ -115,6 +118,7 @@ test("upload_ui_seen does not fire while subscription state is still loading", (
       subscriptionLoading: true,
       outOfCredits: false,
       alreadyTracked: false,
+      dashboardFirstVisitEmptyTracked: true,
     }),
     false
   );
@@ -128,6 +132,7 @@ test("upload_ui_seen does not fire when credits are exhausted", () => {
       subscriptionLoading: false,
       outOfCredits: true,
       alreadyTracked: false,
+      dashboardFirstVisitEmptyTracked: true,
     }),
     false
   );
@@ -141,8 +146,53 @@ test("upload_ui_seen does not re-fire once already tracked", () => {
       subscriptionLoading: false,
       outOfCredits: false,
       alreadyTracked: true,
+      dashboardFirstVisitEmptyTracked: true,
     }),
     false
+  );
+});
+
+// VED-GROWTH-001 ordering fix regression coverage: upload_ui_seen must not
+// fire ahead of dashboard_first_visit_empty even when every other gate is
+// satisfied, since that's exactly the race that produced the broken funnel
+// (Person 103: upload_ui_seen before dashboard_first_visit_empty).
+test("upload_ui_seen does not fire before dashboard_first_visit_empty has been tracked, even when every other gate is satisfied", () => {
+  assert.equal(
+    shouldTrackUploadUiSeen({
+      zeroJobs: true,
+      maintenanceMode: false,
+      subscriptionLoading: false,
+      outOfCredits: false,
+      alreadyTracked: false,
+      dashboardFirstVisitEmptyTracked: false,
+    }),
+    false
+  );
+});
+
+test("upload_ui_seen fires on the render after dashboard_first_visit_empty flips to tracked, once other gates are satisfied", () => {
+  const availabilityExceptOrdering = {
+    zeroJobs: true,
+    maintenanceMode: false,
+    subscriptionLoading: false,
+    outOfCredits: false,
+    alreadyTracked: false,
+  };
+  assert.equal(
+    shouldTrackUploadUiSeen({
+      ...availabilityExceptOrdering,
+      dashboardFirstVisitEmptyTracked: false,
+    }),
+    false,
+    "must not fire while dashboard_first_visit_empty is still untracked"
+  );
+  assert.equal(
+    shouldTrackUploadUiSeen({
+      ...availabilityExceptOrdering,
+      dashboardFirstVisitEmptyTracked: true,
+    }),
+    true,
+    "must fire once dashboard_first_visit_empty has been tracked"
   );
 });
 
@@ -166,4 +216,25 @@ test("UploadPanel.tsx sources upload_ui_seen from shouldTrackUploadUiSeen and fi
   assert.match(source, /shouldTrackUploadUiSeen/);
   assert.match(source, /"upload_ui_seen"/);
   assert.match(source, /"file_selected"/);
+});
+
+// VED-GROWTH-001 ordering fix: prove the two components are actually wired
+// together via dashboardFirstVisitEmptyTracked (state in the parent, prop
+// into the child), not just that each still calls its own tracker in
+// isolation — that wiring is the entire ordering fix.
+test("dashboard/page.tsx tracks dashboard_first_visit_empty via state and passes it down as dashboardFirstVisitEmptyTracked", () => {
+  const source = readFileSync(
+    new URL("../app/dashboard/page.tsx", import.meta.url),
+    "utf8"
+  );
+  assert.match(source, /useState\(false\)/);
+  assert.match(source, /dashboardFirstVisitEmptyTracked=\{dashboardFirstVisitEmptyTracked\}/);
+});
+
+test("UploadPanel.tsx requires dashboardFirstVisitEmptyTracked before evaluating upload_ui_seen", () => {
+  const source = readFileSync(
+    new URL("../components/UploadPanel.tsx", import.meta.url),
+    "utf8"
+  );
+  assert.match(source, /dashboardFirstVisitEmptyTracked/);
 });

@@ -19,6 +19,7 @@ interface UploadPanelProps {
   subscriptionLoading?: boolean;
   maintenanceMode?: boolean;
   zeroJobs: boolean;
+  dashboardFirstVisitEmptyTracked: boolean;
 }
 
 const SUPPORTED_FORMATS_LABEL = "MP4 • MOV • AVI • MKV";
@@ -49,6 +50,7 @@ export function UploadPanel({
   subscriptionLoading = false,
   maintenanceMode = false,
   zeroJobs,
+  dashboardFirstVisitEmptyTracked,
 }: UploadPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -71,6 +73,10 @@ export function UploadPanel({
   // usable (not blocked by maintenance, still-loading subscription, or
   // exhausted credits) for a user who has zero jobs — same once-per-mount
   // ref-guard pattern as credits_exhausted_cta_viewed above.
+  // VED-GROWTH-001 ordering fix: also gated on dashboardFirstVisitEmptyTracked
+  // (a prop, not a ref) so this effect deterministically fires after
+  // dashboard_first_visit_empty in the parent — see the comment on that
+  // state in app/dashboard/page.tsx.
   const hasTrackedUploadUiSeenRef = useRef(false);
   useEffect(() => {
     if (
@@ -80,12 +86,13 @@ export function UploadPanel({
         subscriptionLoading,
         outOfCredits,
         alreadyTracked: hasTrackedUploadUiSeenRef.current,
+        dashboardFirstVisitEmptyTracked,
       })
     ) {
       hasTrackedUploadUiSeenRef.current = true;
       track("upload_ui_seen");
     }
-  }, [zeroJobs, maintenanceMode, subscriptionLoading, outOfCredits]);
+  }, [zeroJobs, maintenanceMode, subscriptionLoading, outOfCredits, dashboardFirstVisitEmptyTracked]);
 
   const handleUpgradeCtaClick = () => {
     track("credits_exhausted_cta_clicked");
