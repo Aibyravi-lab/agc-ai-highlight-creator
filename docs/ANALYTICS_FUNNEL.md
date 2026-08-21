@@ -29,7 +29,7 @@ were later moved server-side).
 | `Download Reel` | User downloads a horizontal or vertical reel (dashboard result, project card, or results panel) | `frontend/app/dashboard/page.tsx`, `frontend/components/ProjectsPanel.tsx`, `frontend/components/ResultPanel.tsx` |
 | `Download Thumbnail` | User downloads a thumbnail | same files as above |
 | `Project Deleted` | User confirms project deletion | `frontend/components/ProjectsPanel.tsx` |
-| `Upgrade Button Clicked` | User clicks "Upgrade to Pro" on the pricing page | `frontend/app/pricing/page.tsx` |
+| `Upgrade Button Clicked` | User clicks "Upgrade to Pro" (authenticated) or "Sign in to Upgrade" (unauthenticated) on the pricing page. The unauthenticated click carries `{ authenticated: false }`; the authenticated click carries no properties (unchanged) — see VED-GROWTH-007 below. | `frontend/app/pricing/page.tsx` |
 | `Checkout Started` | Razorpay order created and checkout modal is opening | `frontend/app/pricing/page.tsx` |
 | `Payment Success` | Payment verified and Pro plan activated | `frontend/app/pricing/page.tsx` |
 | `Payment Failed` | Order creation fails, or Razorpay reports `payment.failed`; includes a `reason` string and a `failure_category` (see below) | `frontend/app/pricing/page.tsx` |
@@ -88,6 +88,31 @@ exists to attribute that category to.
 - `credits_exhausted_cta_clicked` fires from the CTA `Link`'s `onClick`, in addition to (not instead
   of) its normal navigation to `/pricing`. It is a distinct signal from `Upgrade Button Clicked`,
   which is preserved unchanged and only fires from the pricing page itself.
+
+---
+
+## VED-GROWTH-007 — Pricing → Upgrade Intent Preservation
+
+VED-GROWTH-006's forensic audit found that an unauthenticated visitor's "Sign in to
+Upgrade" click on `/pricing` was invisible to `Upgrade Button Clicked` (that event only fired
+from the authenticated `handleUpgrade` path) and, after login, always landed on `/dashboard` —
+losing the user's upgrade intent with no way back to checkout context.
+
+- The unauthenticated Pro-plan CTA on `/pricing` now links to `/login?next=/pricing` instead of
+  `/login`, and fires `track("Upgrade Button Clicked", { authenticated: false })` on click
+  (`frontend/app/pricing/page.tsx`, `handleSignInToUpgradeClick`) — in addition to, not instead
+  of, its normal navigation. The existing authenticated click (`handleUpgrade`) is unchanged and
+  continues to fire `Upgrade Button Clicked` with no properties, so existing dashboards/funnels
+  built on that event are unaffected; `authenticated: false` is purely additive.
+- `frontend/app/login/page.tsx` reads a `next` search param and, on successful login (and on the
+  existing "already logged in" redirect effect), sends the user to that path instead of always
+  `/dashboard`. Validation lives in `frontend/utils/loginRedirect.ts`
+  (`getSafeLoginRedirect`): `next` must be present, start with a single `/`, and not start with
+  `//` — anything else (missing, protocol-relative like `//evil.com`, absolute URLs, etc.) falls
+  back to the pre-existing `/dashboard` default. This prevents the `next` param from being used as
+  an open redirect to another origin.
+- This does not change checkout, payment verification, or credit logic in any way — it only
+  affects where an unauthenticated visitor lands after signing in and adds one analytics property.
 
 ---
 
@@ -281,7 +306,9 @@ Only anonymous/user IDs already used by PostHog, event names, and the properties
 | `frontend/app/dashboard/page.tsx` | `Dashboard Viewed`, `Logout`, `Download Reel` / `Download Thumbnail` (primary result download) |
 | `frontend/components/ProjectsPanel.tsx` | `Download Reel`, `Download Thumbnail`, `Project Deleted` |
 | `frontend/components/ResultPanel.tsx` | `Download Reel`, `Download Thumbnail` |
-| `frontend/app/pricing/page.tsx` | `Upgrade Button Clicked`, `Checkout Started`, `Payment Failed` (+ `failure_category`), `pricing_page_viewed` |
+| `frontend/app/pricing/page.tsx` | `Upgrade Button Clicked` (+ `authenticated: false` on the unauthenticated CTA, VED-GROWTH-007), `Checkout Started`, `Payment Failed` (+ `failure_category`), `pricing_page_viewed` |
+| `frontend/app/login/page.tsx` | Reads `next` search param and redirects post-login accordingly (VED-GROWTH-007) |
+| `frontend/utils/loginRedirect.ts` | `getSafeLoginRedirect` — validates `next` against open-redirect (VED-GROWTH-007) |
 | `frontend/components/UploadPanel.tsx` | `credits_exhausted_cta_viewed`, `credits_exhausted_cta_clicked`, `upload_ui_seen`, `file_selected` |
 | `frontend/utils/firstUploadDiagnostics.ts` | Pure fire-once decisions for `dashboard_first_visit_empty` / `upload_ui_seen` |
 | `backend/app/services/mission_control_service.py` | `repeat_users` — distinct-calendar-date definition (GROW-007) |

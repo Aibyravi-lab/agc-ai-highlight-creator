@@ -5,12 +5,19 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "../../context/AuthContext";
 import { track } from "../../services/analytics";
+import { getSafeLoginRedirect } from "../../utils/loginRedirect";
 
 function LoginContent() {
   const { login, user, loading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const prefilledEmail = searchParams.get("email") || "";
+  // VED-GROWTH-007: preserves upgrade intent through login — e.g. the
+  // pricing page's unauthenticated CTA links here with ?next=/pricing so
+  // the user lands back where they expressed intent instead of always on
+  // /dashboard. Validated to reject anything but a same-origin relative
+  // path (see getSafeLoginRedirect) so this can never become an open redirect.
+  const redirectTarget = getSafeLoginRedirect(searchParams.get("next"));
 
   const [email, setEmail] = useState(prefilledEmail);
   const [password, setPassword] = useState("");
@@ -20,9 +27,9 @@ function LoginContent() {
 
   useEffect(() => {
     if (!loading && user) {
-      router.replace("/dashboard");
+      router.replace(redirectTarget);
     }
-  }, [loading, user, router]);
+  }, [loading, user, router, redirectTarget]);
 
   // Arriving here straight from a successful email verification: the
   // email is already known, so send focus straight to the password field.
@@ -40,7 +47,7 @@ function LoginContent() {
       await login(email, password);
       track("User Logged In");
       track("Login Success");
-      router.replace("/dashboard");
+      router.replace(redirectTarget);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {

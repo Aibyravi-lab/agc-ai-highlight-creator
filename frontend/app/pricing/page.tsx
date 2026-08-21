@@ -59,7 +59,19 @@ function PlanCard({ name, price, priceSuffix, features, badge, button, highlight
         ))}
       </ul>
 
-      {button.onClick ? (
+      {button.href ? (
+        // A Link that also carries onClick (e.g. for a tracked "Sign in to
+        // Upgrade" click) must be checked before the plain-onClick button
+        // branch below, otherwise it would render as a non-navigating
+        // <button> and the click would fire tracking but go nowhere.
+        <Link
+          href={button.href}
+          onClick={button.onClick}
+          className="block text-center bg-green-600 hover:bg-green-700 text-white font-semibold px-6 py-3 rounded-xl text-sm transition-colors"
+        >
+          {button.label}
+        </Link>
+      ) : button.onClick ? (
         <button
           onClick={button.onClick}
           disabled={button.disabled}
@@ -71,17 +83,10 @@ function PlanCard({ name, price, priceSuffix, features, badge, button, highlight
         >
           {button.label}
         </button>
-      ) : button.disabled ? (
+      ) : (
         <span className="block text-center bg-[#1a1d2e] text-gray-500 font-semibold px-6 py-3 rounded-xl text-sm cursor-not-allowed">
           {button.label}
         </span>
-      ) : (
-        <Link
-          href={button.href ?? "#"}
-          className="block text-center bg-green-600 hover:bg-green-700 text-white font-semibold px-6 py-3 rounded-xl text-sm transition-colors"
-        >
-          {button.label}
-        </Link>
       )}
     </div>
   );
@@ -186,6 +191,16 @@ export default function PricingPage() {
     runVerification(pendingPayment);
   };
 
+  // VED-GROWTH-007: the authenticated Upgrade flow fires "Upgrade Button
+  // Clicked" from handleUpgrade below (unchanged). An unauthenticated
+  // visitor's click never reaches handleUpgrade — it navigates straight to
+  // /login — so without this, real upgrade intent from anonymous visitors
+  // was invisible in that event. Fired with authenticated:false so it can
+  // be distinguished from (not conflated with) the authenticated click.
+  const handleSignInToUpgradeClick = () => {
+    track("Upgrade Button Clicked", { authenticated: false });
+  };
+
   const handleUpgrade = async () => {
     if (IN_FLIGHT_STATES.includes(checkoutState)) return;
 
@@ -267,7 +282,11 @@ export default function PricingPage() {
                     onClick: handleUpgrade,
                     disabled: IN_FLIGHT_STATES.includes(checkoutState),
                   }
-              : { label: "Sign in to Upgrade", href: "/login" }
+              : {
+                  label: "Sign in to Upgrade",
+                  href: "/login?next=/pricing",
+                  onClick: handleSignInToUpgradeClick,
+                }
           }
         />
       </div>
