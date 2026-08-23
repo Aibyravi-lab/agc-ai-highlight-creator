@@ -12,6 +12,7 @@ import { track } from "../services/analytics";
 import { useAuthedMediaUrl } from "../hooks/useAuthedMediaUrl";
 import { selectDisplayReasons } from "../utils/highlightReasons";
 import { shouldShowResultUpgradeCta } from "../utils/resultUpgradeCta";
+import { PRICING_CTA_SOURCE_KEY } from "../utils/pricingSource";
 import type { ExtendedPipelineResult, HighlightItem } from "../types/pipeline";
 
 interface ResultPanelProps {
@@ -143,6 +144,15 @@ export function ResultPanel({
   });
 
   const handleUpgradeCtaClick = () => {
+    // VED-GROWTH-008: additive attribution metadata for the /pricing visit
+    // this click leads to — read (and cleared) by PricingPage on mount.
+    // Best-effort only: sessionStorage being unavailable must never block
+    // the existing click tracking or navigation below.
+    try {
+      sessionStorage.setItem(PRICING_CTA_SOURCE_KEY, "result_panel");
+    } catch {
+      // ignore — attribution is best-effort
+    }
     track("result_upgrade_cta_clicked");
   };
 

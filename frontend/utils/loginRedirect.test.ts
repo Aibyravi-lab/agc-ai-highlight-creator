@@ -63,19 +63,27 @@ test("pricing/page.tsx fires Upgrade Button Clicked with authenticated:false fro
   assert.ok(handlerMatch, "handleSignInToUpgradeClick handler not found in pricing/page.tsx");
 
   const handlerBody = handlerMatch[1];
-  assert.match(
-    handlerBody,
-    /track\("Upgrade Button Clicked", \{ authenticated: false \}\)/
-  );
+  // VED-GROWTH-008 merges `source` in alongside authenticated:false — the
+  // property must still be present verbatim, not replaced.
+  assert.match(handlerBody, /authenticated: false,\s*\n\s*source: pricingSourceRef\.current,/);
 
   // Wired into the CTA's button config, not just declared and unused.
   assert.match(source, /onClick:\s*handleSignInToUpgradeClick/);
 });
 
-test("authenticated Upgrade Button Clicked call is unchanged (no properties added)", () => {
+// VED-GROWTH-008 updates this from its original "no properties added"
+// assertion: the authenticated call now carries additive `source`
+// attribution (read from a ref, not state — see pricingSource.test.ts for
+// why), merged in rather than replacing the (previously absent) properties
+// object.
+test("authenticated Upgrade Button Clicked call carries only the additive source property", () => {
   const source = readFileSync(new URL("../app/pricing/page.tsx", import.meta.url), "utf8");
 
-  assert.match(source, /track\("Upgrade Button Clicked"\);/);
+  assert.match(source, /const source = pricingSourceRef\.current;\s*\n\s*track\("Upgrade Button Clicked", \{ source \}\);/);
+  // Guards against scope creep: the authenticated call must not also gain
+  // an authenticated:true/false property — that's the unauthenticated
+  // call's job.
+  assert.doesNotMatch(source, /track\("Upgrade Button Clicked", \{ source \}\);[\s\S]{0,40}authenticated/);
 });
 
 test("PlanCard renders href-based buttons as a navigating Link even when onClick is also present", () => {

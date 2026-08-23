@@ -29,12 +29,12 @@ were later moved server-side).
 | `Download Reel` | User downloads a horizontal or vertical reel (dashboard result, project card, or results panel) | `frontend/app/dashboard/page.tsx`, `frontend/components/ProjectsPanel.tsx`, `frontend/components/ResultPanel.tsx` |
 | `Download Thumbnail` | User downloads a thumbnail | same files as above |
 | `Project Deleted` | User confirms project deletion | `frontend/components/ProjectsPanel.tsx` |
-| `Upgrade Button Clicked` | User clicks "Upgrade to Pro" (authenticated) or "Sign in to Upgrade" (unauthenticated) on the pricing page. The unauthenticated click carries `{ authenticated: false }`; the authenticated click carries no properties (unchanged) — see VED-GROWTH-007 below. | `frontend/app/pricing/page.tsx` |
+| `Upgrade Button Clicked` | User clicks "Upgrade to Pro" (authenticated) or "Sign in to Upgrade" (unauthenticated) on the pricing page. The unauthenticated click carries `{ authenticated: false, source }`; the authenticated click carries `{ source }` — see VED-GROWTH-007 and VED-GROWTH-008 below. | `frontend/app/pricing/page.tsx` |
 | `Checkout Started` | Razorpay order created and checkout modal is opening | `frontend/app/pricing/page.tsx` |
 | `Payment Success` | Payment verified and Pro plan activated | `frontend/app/pricing/page.tsx` |
 | `Payment Failed` | Order creation fails, or Razorpay reports `payment.failed`; includes a `reason` string and a `failure_category` (see below) | `frontend/app/pricing/page.tsx` |
 | `Logout` | User signs out | `frontend/app/dashboard/page.tsx` |
-| `pricing_page_viewed` | Pricing page (`/pricing`) mounts | `frontend/app/pricing/page.tsx` |
+| `pricing_page_viewed` | Pricing page (`/pricing`) mounts; carries `{ source }` — see VED-GROWTH-008 below | `frontend/app/pricing/page.tsx` |
 | `credits_exhausted_cta_viewed` | The "out of credits / Upgrade to Pro" CTA on the dashboard upload panel first becomes visible in a given mount | `frontend/components/UploadPanel.tsx` |
 | `credits_exhausted_cta_clicked` | User clicks the "Upgrade to Pro" link inside that CTA | `frontend/components/UploadPanel.tsx` |
 | `dashboard_first_visit_empty` | Authenticated dashboard mounts and `jobStats` has loaded with zero jobs in every status (queued/running/completed/failed) | `frontend/app/dashboard/page.tsx` |
@@ -113,6 +113,48 @@ losing the user's upgrade intent with no way back to checkout context.
   an open redirect to another origin.
 - This does not change checkout, payment verification, or credit logic in any way — it only
   affects where an unauthenticated visitor lands after signing in and adds one analytics property.
+
+---
+
+## VED-GROWTH-008 — Pricing CTA Source Attribution
+
+VED-GROWTH-006's forensic audit found that every CTA linking to `/pricing`
+(`UploadPanel`'s exhausted-credit CTA, `ResultPanel`'s post-generation CTA, the dashboard header
+nav link) lands on the same untagged `pricing_page_viewed` and `Upgrade Button Clicked` events —
+production data showed 11 users viewing pricing against only 1 user ever recorded seeing the
+credits-exhausted CTA, and there was no way to tell whether the other visits originated from
+`ResultPanel`, the nav link, or a direct visit. This sprint adds a `source` property to attribute
+which CTA (if any) sent the visitor to pricing, without changing any event name, navigation
+target, or the checkout/payment flow.
+
+- `source` is one of `"credits_exhausted"` | `"result_panel"` | `"direct"`, typed as `PricingSource`
+  in `frontend/utils/pricingSource.ts`.
+- The two CTAs write a sessionStorage key (`PRICING_CTA_SOURCE_KEY = "pricing_cta_source"`)
+  immediately before their existing `track()` call and existing `<Link href="/pricing">` navigation
+  — `UploadPanel.tsx`'s `handleUpgradeCtaClick` writes `"credits_exhausted"`, `ResultPanel.tsx`'s
+  `handleUpgradeCtaClick` writes `"result_panel"`. Neither the event name, the href, nor the
+  sessionStorage write can block navigation — the write is wrapped in `try`/`catch` (privacy-mode
+  browsers may not expose `sessionStorage`), matching the existing "analytics must never break the
+  user flow" posture of `services/analytics.ts`.
+- `frontend/app/pricing/page.tsx` reads that key in its existing mount effect (the same one that
+  already fired `pricing_page_viewed`), resolves it through `resolvePricingSource()` — which never
+  trusts the raw value and falls back to `"direct"` for anything missing or unrecognized — and
+  immediately removes the key so a later, unrelated pricing visit in the same tab session never
+  inherits stale attribution. The resolved value is stored in a ref (`pricingSourceRef`, not React
+  state — it's only read inside click handlers, never rendered, so there's nothing for a state
+  update to synchronize with the DOM, and assigning it from the mount effect would otherwise trip
+  the `react-hooks/set-state-in-effect` lint rule for no benefit) and attached to
+  `pricing_page_viewed` as `{ source }`.
+- `handleUpgrade` (the authenticated "Upgrade to Pro" click) now fires
+  `track("Upgrade Button Clicked", { source })` (read from `pricingSourceRef.current`) — previously
+  fired with no properties. `handleSignInToUpgradeClick` (VED-GROWTH-007's unauthenticated click)
+  now fires `track("Upgrade Button Clicked", { authenticated: false, source: pricingSourceRef.current })`
+  — `source` is merged in alongside the existing `authenticated: false`, which is unchanged.
+- No new event names were introduced. `Checkout Started`, `Payment Success`, and `Payment Failed`
+  are untouched — `source` is not attached to them, since attribution is only meaningful at the
+  point a visitor arrives on `/pricing` and pricing state (not checkout state) doesn't need it.
+- Purely additive: no `/pricing` href gained a query string, no CTA gained an extra navigation hop,
+  and Razorpay/payment/credit-deduction logic was not touched.
 
 ---
 
@@ -305,12 +347,13 @@ Only anonymous/user IDs already used by PostHog, event names, and the properties
 | `frontend/app/login/page.tsx` | `Login Success` |
 | `frontend/app/dashboard/page.tsx` | `Dashboard Viewed`, `Logout`, `Download Reel` / `Download Thumbnail` (primary result download) |
 | `frontend/components/ProjectsPanel.tsx` | `Download Reel`, `Download Thumbnail`, `Project Deleted` |
-| `frontend/components/ResultPanel.tsx` | `Download Reel`, `Download Thumbnail` |
-| `frontend/app/pricing/page.tsx` | `Upgrade Button Clicked` (+ `authenticated: false` on the unauthenticated CTA, VED-GROWTH-007), `Checkout Started`, `Payment Failed` (+ `failure_category`), `pricing_page_viewed` |
+| `frontend/components/ResultPanel.tsx` | `Download Reel`, `Download Thumbnail`, `result_upgrade_cta_clicked` (+ writes `source` attribution, VED-GROWTH-008) |
+| `frontend/app/pricing/page.tsx` | `Upgrade Button Clicked` (+ `authenticated: false` on the unauthenticated CTA, VED-GROWTH-007; + `source` on both CTAs, VED-GROWTH-008), `Checkout Started`, `Payment Failed` (+ `failure_category`), `pricing_page_viewed` (+ `source`, VED-GROWTH-008) |
 | `frontend/app/login/page.tsx` | Reads `next` search param and redirects post-login accordingly (VED-GROWTH-007) |
 | `frontend/utils/loginRedirect.ts` | `getSafeLoginRedirect` — validates `next` against open-redirect (VED-GROWTH-007) |
-| `frontend/components/UploadPanel.tsx` | `credits_exhausted_cta_viewed`, `credits_exhausted_cta_clicked`, `upload_ui_seen`, `file_selected` |
+| `frontend/components/UploadPanel.tsx` | `credits_exhausted_cta_viewed`, `credits_exhausted_cta_clicked` (+ writes `source` attribution, VED-GROWTH-008), `upload_ui_seen`, `file_selected` |
 | `frontend/utils/firstUploadDiagnostics.ts` | Pure fire-once decisions for `dashboard_first_visit_empty` / `upload_ui_seen` |
+| `frontend/utils/pricingSource.ts` | `PricingSource` type, `PRICING_CTA_SOURCE_KEY`, `resolvePricingSource()` — pricing CTA source attribution (VED-GROWTH-008) |
 | `backend/app/services/mission_control_service.py` | `repeat_users` — distinct-calendar-date definition (GROW-007) |
 | `backend/app/services/analytics_service.py` | `AnalyticsService` — all backend-authoritative capture methods (VED-ANALYTICS-002/003/005) |
 | `backend/app/routers/upload.py` | `Upload Started` / `upload_started`, `Upload Completed` / `upload_completed` (VED-ANALYTICS-005) |

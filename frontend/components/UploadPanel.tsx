@@ -5,6 +5,7 @@ import Link from "next/link";
 import { MAX_UPLOAD_SIZE_MB, MAX_VIDEO_DURATION_MINUTES } from "../utils/uploadLimits";
 import { isUploadInteractionDisabled, isGenerateDisabled } from "../utils/uploadPanelState";
 import { shouldTrackUploadUiSeen } from "../utils/firstUploadDiagnostics";
+import { PRICING_CTA_SOURCE_KEY } from "../utils/pricingSource";
 import { track } from "../services/analytics";
 
 interface UploadPanelProps {
@@ -95,6 +96,15 @@ export function UploadPanel({
   }, [zeroJobs, maintenanceMode, subscriptionLoading, outOfCredits, dashboardFirstVisitEmptyTracked]);
 
   const handleUpgradeCtaClick = () => {
+    // VED-GROWTH-008: additive attribution metadata for the /pricing visit
+    // this click leads to — read (and cleared) by PricingPage on mount.
+    // Best-effort only: sessionStorage being unavailable must never block
+    // the existing click tracking or navigation below.
+    try {
+      sessionStorage.setItem(PRICING_CTA_SOURCE_KEY, "credits_exhausted");
+    } catch {
+      // ignore — attribution is best-effort
+    }
     track("credits_exhausted_cta_clicked");
   };
   const generateDisabled = isGenerateDisabled({

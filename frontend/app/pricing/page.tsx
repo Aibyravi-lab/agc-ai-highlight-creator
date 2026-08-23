@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "../../context/AuthContext";
 import { useSubscription } from "../../hooks/useSubscription";
@@ -8,6 +8,11 @@ import { InfoPageShell } from "../../components/InfoPageShell";
 import { createPaymentOrder, verifyPayment } from "../../services/api";
 import { openRazorpayCheckout } from "../../services/razorpay";
 import { track } from "../../services/analytics";
+import {
+  PRICING_CTA_SOURCE_KEY,
+  resolvePricingSource,
+  type PricingSource,
+} from "../../utils/pricingSource";
 import type { RazorpayPaymentSuccess } from "../../types/payment";
 
 interface PlanCardProps {
@@ -133,12 +138,32 @@ export default function PricingPage() {
   const [checkoutState, setCheckoutState] = useState<CheckoutState>("idle");
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [pendingPayment, setPendingPayment] = useState<RazorpayPaymentSuccess | null>(null);
+  // VED-GROWTH-008: which CTA sent the visitor here ("credits_exhausted" /
+  // "result_panel"), or "direct" if none did. Purely additive attribution
+  // metadata — never affects navigation, checkout, or payment behavior. A
+  // ref rather than state: it's read only inside click handlers (never
+  // rendered), so there is nothing for a state update to synchronize with
+  // the DOM — assigning it from the mount effect would just be an
+  // unnecessary extra render.
+  const pricingSourceRef = useRef<PricingSource>("direct");
 
   // Fires once per mount — mirrors the "Dashboard Viewed" / "Landing Page
   // Viewed" pattern. An empty dependency array means state/prop changes
   // from checkout progress never retrigger this.
   useEffect(() => {
-    track("pricing_page_viewed");
+    // VED-GROWTH-008: read the CTA-set attribution key (if any) and clear it
+    // immediately so a later, unrelated pricing visit never inherits stale
+    // attribution. Browser-only and best-effort — sessionStorage being
+    // unavailable must never block pricing_page_viewed from firing.
+    let source: PricingSource = "direct";
+    try {
+      source = resolvePricingSource(sessionStorage.getItem(PRICING_CTA_SOURCE_KEY));
+      sessionStorage.removeItem(PRICING_CTA_SOURCE_KEY);
+    } catch {
+      // ignore — attribution is best-effort
+    }
+    pricingSourceRef.current = source;
+    track("pricing_page_viewed", { source });
   }, []);
 
   // While auth or subscription is still resolving, we don't yet know the
@@ -198,13 +223,17 @@ export default function PricingPage() {
   // was invisible in that event. Fired with authenticated:false so it can
   // be distinguished from (not conflated with) the authenticated click.
   const handleSignInToUpgradeClick = () => {
-    track("Upgrade Button Clicked", { authenticated: false });
+    track("Upgrade Button Clicked", {
+      authenticated: false,
+      source: pricingSourceRef.current,
+    });
   };
 
   const handleUpgrade = async () => {
     if (IN_FLIGHT_STATES.includes(checkoutState)) return;
 
-    track("Upgrade Button Clicked");
+    const source = pricingSourceRef.current;
+    track("Upgrade Button Clicked", { source });
     setCheckoutError(null);
     setPendingPayment(null);
     setCheckoutState("creating_order");
