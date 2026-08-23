@@ -124,6 +124,9 @@ class ProjectService:
 
         connection.close()
 
+        for project in projects:
+            cls._attach_media_availability(project)
+
         return projects
 
     @classmethod
@@ -166,7 +169,36 @@ class ProjectService:
 
         connection.close()
 
+        if project is not None:
+            cls._attach_media_availability(project)
+
         return project
+
+    @staticmethod
+    def _attach_media_availability(project: dict) -> None:
+        """VED-MEDIA-002: a projects row can persist a path whose file no
+        longer exists on disk (see VED-MEDIA-001) -- the frontend needs
+        an explicit signal to show "Media unavailable" instead of a
+        silent broken thumbnail or no-op download, rather than assuming
+        every persisted path is still servable. Only checks paths already
+        present on this row (get_projects/get_project are both scoped to
+        the requesting user_id), via FileSafetyService.is_available --
+        never a client-supplied path, so this is not a new attack surface.
+        Mutates `project` in place; does not touch the DB or the stored
+        path values themselves.
+        """
+
+        project["thumbnail_available"] = (
+            FileSafetyService.is_available(
+                project.get("thumbnail_path")
+            )
+        )
+
+        project["horizontal_reel_available"] = (
+            FileSafetyService.is_available(
+                project.get("horizontal_reel_path")
+            )
+        )
 
     @classmethod
     def delete_project(

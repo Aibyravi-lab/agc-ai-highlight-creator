@@ -10,6 +10,11 @@ import {
 import { track } from "../services/analytics";
 import { useAuthedMediaUrl } from "../hooks/useAuthedMediaUrl";
 import type { ProjectItem } from "../types/pipeline";
+import {
+  resolveMediaState,
+  MEDIA_UNAVAILABLE_LABEL,
+  MEDIA_UNAVAILABLE_DESCRIPTION,
+} from "../utils/mediaAvailability";
 
 export function ProjectsPanel() {
   const [projects, setProjects] = useState<ProjectItem[]>([]);
@@ -85,10 +90,23 @@ function ProjectCard({ project, onDelete }: { project: ProjectItem; onDelete: ()
   const [thumbnailFailed, setThumbnailFailed] = useState(false);
   const [lastThumbnailUrl, setLastThumbnailUrl] = useState<string | null>(null);
 
-  const thumbnailUrl = useAuthedMediaUrl(project.thumbnail_path);
-  const reelUrl = useAuthedMediaUrl(project.horizontal_reel_path);
-  const hasReel = Boolean(project.horizontal_reel_path);
-  const hasThumbnail = Boolean(project.thumbnail_path);
+  const thumbnailState = resolveMediaState(
+    project.thumbnail_path,
+    project.thumbnail_available
+  );
+  const reelState = resolveMediaState(
+    project.horizontal_reel_path,
+    project.horizontal_reel_available
+  );
+  const hasThumbnail = thumbnailState === "available";
+  const hasReel = reelState === "available";
+
+  // Only ever fetch a path the backend has confirmed still exists — a
+  // path already known to be missing (VED-MEDIA-001) is never retried.
+  const thumbnailUrl = useAuthedMediaUrl(
+    hasThumbnail ? project.thumbnail_path : null
+  );
+  const reelUrl = useAuthedMediaUrl(hasReel ? project.horizontal_reel_path : null);
 
   if (thumbnailUrl !== lastThumbnailUrl) {
     setLastThumbnailUrl(thumbnailUrl);
@@ -160,6 +178,27 @@ function ProjectCard({ project, onDelete }: { project: ProjectItem; onDelete: ()
             className="w-full h-full object-cover"
             onError={() => setThumbnailFailed(true)}
           />
+        ) : thumbnailState === "unavailable" || thumbnailFailed ? (
+          <div
+            className="flex flex-col items-center gap-2 text-gray-600"
+            title={MEDIA_UNAVAILABLE_DESCRIPTION}
+          >
+            <svg
+              className="w-8 h-8"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M18.364 5.636L5.636 18.364M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"
+              />
+            </svg>
+            <span className="text-xs">{MEDIA_UNAVAILABLE_LABEL}</span>
+          </div>
         ) : (
           <div className="flex flex-col items-center gap-2 text-gray-600">
             <svg
@@ -223,36 +262,49 @@ function ProjectCard({ project, onDelete }: { project: ProjectItem; onDelete: ()
             </div>
           </div>
         ) : (
-          <div className="flex items-center gap-2 flex-wrap mt-auto pt-1">
-            <button
-              onClick={handleOpen}
-              disabled={!hasReel}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 disabled:bg-[#1e2030] disabled:text-gray-600 disabled:cursor-not-allowed text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500"
-            >
-              Open
-            </button>
-            <button
-              onClick={handleDownloadReel}
-              disabled={!hasReel}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#1e2030] hover:bg-[#252840] disabled:opacity-40 disabled:cursor-not-allowed text-gray-300 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gray-500"
-            >
-              Download Reel
-            </button>
-            <button
-              onClick={handleDownloadThumbnail}
-              disabled={!hasThumbnail}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#1e2030] hover:bg-[#252840] disabled:opacity-40 disabled:cursor-not-allowed text-gray-300 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gray-500"
-            >
-              Download Thumbnail
-            </button>
-            <button
-              onClick={handleDeleteClick}
-              disabled={deleting}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-600/20 hover:bg-red-600/40 disabled:opacity-40 disabled:cursor-not-allowed text-red-400 transition-colors ml-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-500"
-              aria-label={`Delete project ${project.original_video_name}`}
-            >
-              {deleting ? "Deleting…" : "Delete"}
-            </button>
+          <div className="mt-auto pt-1">
+            {reelState === "unavailable" && (
+              <p
+                className="text-gray-500 text-xs mb-2"
+                title={MEDIA_UNAVAILABLE_DESCRIPTION}
+              >
+                {MEDIA_UNAVAILABLE_LABEL}
+              </p>
+            )}
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={handleOpen}
+                disabled={!hasReel}
+                title={reelState === "unavailable" ? MEDIA_UNAVAILABLE_DESCRIPTION : undefined}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 disabled:bg-[#1e2030] disabled:text-gray-600 disabled:cursor-not-allowed text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500"
+              >
+                Open
+              </button>
+              <button
+                onClick={handleDownloadReel}
+                disabled={!hasReel}
+                title={reelState === "unavailable" ? MEDIA_UNAVAILABLE_DESCRIPTION : undefined}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#1e2030] hover:bg-[#252840] disabled:opacity-40 disabled:cursor-not-allowed text-gray-300 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gray-500"
+              >
+                Download Reel
+              </button>
+              <button
+                onClick={handleDownloadThumbnail}
+                disabled={!hasThumbnail}
+                title={thumbnailState === "unavailable" ? MEDIA_UNAVAILABLE_DESCRIPTION : undefined}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#1e2030] hover:bg-[#252840] disabled:opacity-40 disabled:cursor-not-allowed text-gray-300 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gray-500"
+              >
+                Download Thumbnail
+              </button>
+              <button
+                onClick={handleDeleteClick}
+                disabled={deleting}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-600/20 hover:bg-red-600/40 disabled:opacity-40 disabled:cursor-not-allowed text-red-400 transition-colors ml-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-500"
+                aria-label={`Delete project ${project.original_video_name}`}
+              >
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
           </div>
         )}
       </div>

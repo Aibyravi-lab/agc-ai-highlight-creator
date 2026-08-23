@@ -241,6 +241,7 @@ export async function getHistory() {
       date: item.date,
       reel_path: item.reel_path,
       highlights_count: item.highlights_count,
+      reel_available: item.reel_available,
     })),
   };
 }

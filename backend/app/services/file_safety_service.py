@@ -121,3 +121,39 @@ class FileSafetyService:
             )
 
             return False
+
+    @classmethod
+    def is_available(cls, path: str | Path | None) -> bool:
+        """VED-MEDIA-002: read-only companion to safe_delete_file's path
+        boundary. Returns True only if `path` is set, resolves inside one
+        of the approved storage roots (the same _is_safe_target check
+        used before any delete), and currently exists as a file.
+
+        Callers (ProjectService/HistoryService) only ever pass a path
+        already stored on the requesting user's own DB row -- never a
+        client-supplied path -- so this adds no new filesystem access
+        surface beyond what /files already exposes per request. Reusing
+        the deletion boundary here is defense in depth: even a corrupted
+        or unexpected DB value can't make this report True for anything
+        outside application-owned storage. Never raises -- a malformed
+        path or a permissions/OSError while stat()ing is "not available",
+        not a 500.
+        """
+
+        if path is None or (
+            isinstance(path, str) and not path.strip()
+        ):
+            return False
+
+        try:
+            target = Path(path)
+        except (TypeError, ValueError):
+            return False
+
+        if not cls._is_safe_target(target):
+            return False
+
+        try:
+            return target.is_file()
+        except OSError:
+            return False

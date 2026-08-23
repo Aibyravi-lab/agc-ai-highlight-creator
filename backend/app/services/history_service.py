@@ -3,6 +3,7 @@ from pathlib import Path
 
 from app.config.config import settings
 from app.services.database_service import DatabaseService
+from app.services.file_safety_service import FileSafetyService
 
 
 class HistoryService:
@@ -74,6 +75,15 @@ class HistoryService:
         history = cursor.fetchall()
 
         connection.close()
+
+        for item in history:
+            # VED-MEDIA-002: mirrors ProjectService._attach_media_availability
+            # -- a history row can persist a reel_path whose file no longer
+            # exists (see VED-MEDIA-001). Only checks a path already present
+            # on this user's own row (this query is scoped to user_id).
+            item["reel_available"] = FileSafetyService.is_available(
+                item.get("reel_path")
+            )
 
         return history
 

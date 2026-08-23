@@ -2,6 +2,12 @@
 
 import { downloadReel } from "../services/api";
 import type { HistoryItem } from "../types/pipeline";
+import {
+  isMediaUsable,
+  resolveMediaState,
+  MEDIA_UNAVAILABLE_LABEL,
+  MEDIA_UNAVAILABLE_DESCRIPTION,
+} from "../utils/mediaAvailability";
 
 interface HistoryPanelProps {
   history: HistoryItem[];
@@ -96,13 +102,21 @@ export function HistoryPanel({ history, historyLoading = false }: HistoryPanelPr
                         {item.highlights_count}
                       </td>
                       <td className="px-4 py-3">
-                        {item.reel_path ? (
+                        {isMediaUsable(item.reel_path, item.reel_available) ? (
                           <button
                             onClick={() => handleDownloadReel(item.reel_path)}
                             className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500"
                           >
                             Open
                           </button>
+                        ) : resolveMediaState(item.reel_path, item.reel_available) ===
+                          "unavailable" ? (
+                          <span
+                            className="text-gray-500 text-xs"
+                            title={MEDIA_UNAVAILABLE_DESCRIPTION}
+                          >
+                            {MEDIA_UNAVAILABLE_LABEL}
+                          </span>
                         ) : (
                           <span className="text-gray-600 text-xs">—</span>
                         )}

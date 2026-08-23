@@ -139,6 +139,11 @@ export interface HistoryItem {
   date: string;
   reel_path: string;
   highlights_count: number;
+  // VED-MEDIA-002: true only if reel_path is set AND the file still
+  // exists on disk. A persisted reel_path whose file was later removed
+  // (see VED-MEDIA-001) reports false here instead of the UI silently
+  // failing to open/download it.
+  reel_available: boolean;
 }
 
 export interface HistoryResponse {
@@ -156,6 +161,12 @@ export interface ProjectItem {
   metadata_json_path: string | null;
   status: string;
   created_at: string;
+  // VED-MEDIA-002: true only if the corresponding *_path is set AND the
+  // file still exists on disk. A persisted path whose file was later
+  // removed (see VED-MEDIA-001) reports false here instead of the UI
+  // silently showing a broken thumbnail or a no-op download.
+  thumbnail_available: boolean;
+  horizontal_reel_available: boolean;
 }
 
 export interface ProjectsResponse {
