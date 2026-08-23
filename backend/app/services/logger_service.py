@@ -26,6 +26,21 @@ class StructuredFormatter(logging.Formatter):
         if hasattr(record, "job_id") and record.job_id:
             data["job_id"] = record.job_id
 
+        if hasattr(record, "event") and record.event:
+            data["event"] = record.event
+
+        if hasattr(record, "stage") and record.stage:
+            data["stage"] = record.stage
+
+        if hasattr(record, "status_code") and record.status_code is not None:
+            data["status_code"] = record.status_code
+
+        if hasattr(record, "outcome") and record.outcome:
+            data["outcome"] = record.outcome
+
+        if hasattr(record, "reason_code") and record.reason_code:
+            data["reason_code"] = record.reason_code
+
         return json.dumps(data)
 
 
@@ -66,7 +81,12 @@ class LoggerService:
         *,
         request_id: Optional[str] = None,
         user_id: Optional[int] = None,
-        job_id: Optional[str] = None
+        job_id: Optional[str] = None,
+        event: Optional[str] = None,
+        stage: Optional[str] = None,
+        status_code: Optional[int] = None,
+        outcome: Optional[str] = None,
+        reason_code: Optional[str] = None
     ) -> None:
 
         cls._logger.info(
@@ -75,6 +95,11 @@ class LoggerService:
                 "request_id": request_id,
                 "user_id": user_id,
                 "job_id": job_id,
+                "event": event,
+                "stage": stage,
+                "status_code": status_code,
+                "outcome": outcome,
+                "reason_code": reason_code,
             }
         )
 
@@ -85,7 +110,12 @@ class LoggerService:
         *,
         request_id: Optional[str] = None,
         user_id: Optional[int] = None,
-        job_id: Optional[str] = None
+        job_id: Optional[str] = None,
+        event: Optional[str] = None,
+        stage: Optional[str] = None,
+        status_code: Optional[int] = None,
+        outcome: Optional[str] = None,
+        reason_code: Optional[str] = None
     ) -> None:
 
         cls._logger.error(
@@ -94,5 +124,10 @@ class LoggerService:
                 "request_id": request_id,
                 "user_id": user_id,
                 "job_id": job_id,
+                "event": event,
+                "stage": stage,
+                "status_code": status_code,
+                "outcome": outcome,
+                "reason_code": reason_code,
             }
         )
