@@ -2,7 +2,9 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from app.config.config import settings
 from app.services.file_safety_service import FileSafetyService
+from app.services.history_service import HistoryService
 from app.services.job_service import JobService
+from app.services.project_service import ProjectService
 
 
 class CleanupService:
@@ -125,9 +127,23 @@ class CleanupService:
             JobService.get_job_retention_reference_times()
         )
 
+        # VED-MEDIA-001: a job folder still referenced by a projects row,
+        # or by a history row (see HistoryService.get_referenced_job_ids
+        # for why history needs its own path-based check), backs a
+        # completed, user-visible record -- it must survive cleanup
+        # regardless of age. Age-based retention below only applies to
+        # jobs no persistent record points at.
+        referenced_job_ids = (
+            ProjectService.get_referenced_job_ids()
+            | HistoryService.get_referenced_job_ids()
+        )
+
         for job_folder in jobs_dir.iterdir():
 
             if not job_folder.is_dir():
+                continue
+
+            if job_folder.name in referenced_job_ids:
                 continue
 
             reference_at = reference_times.get(

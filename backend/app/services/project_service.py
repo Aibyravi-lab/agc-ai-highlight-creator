@@ -61,6 +61,30 @@ class ProjectService:
         return project_id
 
     @classmethod
+    def get_referenced_job_ids(cls) -> set[str]:
+        """VED-MEDIA-001: CleanupService.cleanup_old_jobs() deletes
+        storage/jobs/<job_id> purely by age, with no idea a projects row
+        still points at that folder's media -- a completed project's
+        job_id is a permanent, user-visible reference, not a regenerable
+        temp artifact. This is the reference set cleanup must check before
+        deleting anything.
+        """
+
+        connection = DatabaseService.get_connection()
+
+        cursor = connection.cursor()
+
+        cursor.execute(
+            "SELECT DISTINCT job_id FROM projects WHERE job_id IS NOT NULL"
+        )
+
+        rows = cursor.fetchall()
+
+        connection.close()
+
+        return {row[0] for row in rows}
+
+    @classmethod
     def get_projects(
         cls,
         user_id: int
