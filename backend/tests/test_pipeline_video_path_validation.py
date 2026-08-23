@@ -38,7 +38,9 @@ class PipelineVideoPathValidationTests(unittest.TestCase):
             pipeline_router.JobService, "create_job"
         ) as mock_create_job, patch.object(
             pipeline_router.BackgroundJobService, "start_job"
-        ) as mock_start_job:
+        ) as mock_start_job, patch.object(
+            pipeline_router.AuthService, "deduct_credit"
+        ) as mock_deduct_credit:
 
             with self.assertRaises(HTTPException) as ctx:
                 pipeline_router.start_video_processing(
@@ -51,6 +53,7 @@ class PipelineVideoPathValidationTests(unittest.TestCase):
                 pipeline_router.PipelineError.INVALID_VIDEO_PATH
             )
 
+            mock_deduct_credit.assert_not_called()
             mock_create_job.assert_not_called()
             mock_start_job.assert_not_called()
 
@@ -78,7 +81,7 @@ class PipelineVideoPathValidationTests(unittest.TestCase):
         self._assert_blocked("http://169.254.169.254")
 
     def test_valid_uploaded_video_starts_pipeline(self):
-        video = self.uploads / "abc123_clip.mp4"
+        video = self.uploads / "1_abc123_clip.mp4"
         video.write_bytes(b"data")
 
         with patch.object(
@@ -119,6 +122,45 @@ class PipelineVideoPathValidationTests(unittest.TestCase):
                 kwargs["video_path"],
                 str(video.resolve())
             )
+
+    # ── VED-SEC-001: cross-user ownership enforcement ───────────────
+
+    def test_other_users_video_path_rejected(self):
+        # User 1's own uploaded file — current_user is id=1, but the
+        # file belongs to user 2 (the "victim").
+        victim_video = self.uploads / "2_abc123_clip.mp4"
+        victim_video.write_bytes(b"data")
+
+        self._assert_blocked(str(victim_video))
+
+    def test_ownership_rejection_returns_same_shape_as_invalid_path(self):
+        # No cross-user leakage: a real file owned by someone else must
+        # produce the exact same error code/message shape as a bogus path.
+        victim_video = self.uploads / "2_abc123_clip.mp4"
+        victim_video.write_bytes(b"data")
+
+        with patch.object(
+            pipeline_router.JobService, "create_job"
+        ), patch.object(
+            pipeline_router.BackgroundJobService, "start_job"
+        ), patch.object(
+            pipeline_router.AuthService, "deduct_credit"
+        ):
+            with self.assertRaises(HTTPException) as owned_by_other_ctx:
+                pipeline_router.start_video_processing(
+                    str(victim_video), self.current_user
+                )
+
+            with self.assertRaises(HTTPException) as nonexistent_ctx:
+                pipeline_router.start_video_processing(
+                    str(self.uploads / "2_never_existed.mp4"),
+                    self.current_user
+                )
+
+        self.assertEqual(
+            owned_by_other_ctx.exception.detail,
+            nonexistent_ctx.exception.detail
+        )
 
 
 if __name__ == "__main__":

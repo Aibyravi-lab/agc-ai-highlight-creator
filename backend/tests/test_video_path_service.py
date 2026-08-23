@@ -24,28 +24,36 @@ class VideoPathServiceTests(unittest.TestCase):
         )
         self._patcher.start()
 
+        self.owner_id = 1
+
     def tearDown(self):
         self._patcher.stop()
         self._tmp_dir.cleanup()
 
-    def _assert_rejected(self, video_path):
+    def _assert_rejected(self, video_path, user_id=1):
         with self.assertRaises(VideoPathError):
-            VideoPathService.validate_upload_path(video_path)
+            VideoPathService.validate_upload_path(video_path, user_id=user_id)
 
     def test_valid_uploaded_video_passes(self):
-        video = self.uploads / "abc123_clip.mp4"
+        video = self.uploads / f"{self.owner_id}_abc123_clip.mp4"
         video.write_bytes(b"data")
 
-        result = VideoPathService.validate_upload_path(str(video))
+        result = VideoPathService.validate_upload_path(
+            str(video), user_id=self.owner_id
+        )
 
         self.assertEqual(result, str(video.resolve()))
 
     def test_nested_uploaded_video_passes(self):
-        nested = self.uploads / "job1" / "clip.mp4"
+        nested = (
+            self.uploads / "job1" / f"{self.owner_id}_abc123_clip.mp4"
+        )
         nested.parent.mkdir(parents=True)
         nested.write_bytes(b"data")
 
-        result = VideoPathService.validate_upload_path(str(nested))
+        result = VideoPathService.validate_upload_path(
+            str(nested), user_id=self.owner_id
+        )
 
         self.assertEqual(result, str(nested.resolve()))
 
@@ -82,7 +90,9 @@ class VideoPathServiceTests(unittest.TestCase):
         self._assert_rejected(str(victim))
 
     def test_missing_upload_file_blocked(self):
-        self._assert_rejected(str(self.uploads / "does_not_exist.mp4"))
+        self._assert_rejected(
+            str(self.uploads / f"{self.owner_id}_does_not_exist.mp4")
+        )
 
     def test_none_blocked_without_raising_typeerror(self):
         self._assert_rejected(None)
@@ -95,6 +105,67 @@ class VideoPathServiceTests(unittest.TestCase):
 
     def test_upload_root_itself_blocked(self):
         self._assert_rejected(str(self.uploads))
+
+    # ── VED-SEC-001: ownership enforcement ──────────────────────────
+
+    def test_other_users_file_rejected(self):
+        video = self.uploads / f"{self.owner_id}_abc123_clip.mp4"
+        video.write_bytes(b"data")
+
+        with self.assertRaises(VideoPathError):
+            VideoPathService.validate_upload_path(str(video), user_id=2)
+
+    def test_owner_can_access_own_file_after_rejection(self):
+        # Same file, wrong owner rejected, then the real owner still
+        # succeeds — proves the rejection isn't a side effect on the file.
+        video = self.uploads / f"{self.owner_id}_abc123_clip.mp4"
+        video.write_bytes(b"data")
+
+        with self.assertRaises(VideoPathError):
+            VideoPathService.validate_upload_path(str(video), user_id=2)
+
+        result = VideoPathService.validate_upload_path(
+            str(video), user_id=self.owner_id
+        )
+        self.assertEqual(result, str(video.resolve()))
+
+    def test_wrong_owner_and_nonexistent_path_raise_same_message(self):
+        # VED-SEC-001: a wrong-owner request must be indistinguishable
+        # from a malformed/nonexistent one — no confirmation that another
+        # user's file exists.
+        video = self.uploads / f"{self.owner_id}_abc123_clip.mp4"
+        video.write_bytes(b"data")
+
+        with self.assertRaises(VideoPathError) as wrong_owner_ctx:
+            VideoPathService.validate_upload_path(str(video), user_id=2)
+
+        with self.assertRaises(VideoPathError) as bad_path_ctx:
+            # Also owned by someone else (not the caller) and also
+            # nonexistent -- the ownership check must reject this before
+            # ever reaching the is_file() check, exactly as it does for
+            # the real-but-not-mine file above.
+            VideoPathService.validate_upload_path(
+                str(self.uploads / f"{self.owner_id}_totally_fake.mp4"),
+                user_id=2
+            )
+
+        self.assertEqual(
+            str(wrong_owner_ctx.exception), str(bad_path_ctx.exception)
+        )
+
+    def test_numeric_prefix_collision_not_exploitable(self):
+        # A file named "12_..." must not be claimable by user_id=1 via a
+        # naive substring/prefix mix-up.
+        video = self.uploads / "12_abcd1234_clip.mp4"
+        video.write_bytes(b"data")
+
+        with self.assertRaises(VideoPathError):
+            VideoPathService.validate_upload_path(str(video), user_id=1)
+
+        result = VideoPathService.validate_upload_path(
+            str(video), user_id=12
+        )
+        self.assertEqual(result, str(video.resolve()))
 
 
 if __name__ == "__main__":

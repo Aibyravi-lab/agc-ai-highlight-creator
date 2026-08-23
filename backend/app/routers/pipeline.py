@@ -114,7 +114,10 @@ def start_video_processing(
         raise _maintenance_mode_error()
 
     try:
-        video_path = VideoPathService.validate_upload_path(video_path)
+        video_path = VideoPathService.validate_upload_path(
+            video_path,
+            user_id=user_id
+        )
     except VideoPathError as error:
 
         raise HTTPException(

@@ -253,7 +253,15 @@ async def upload_video(
     raw_stem = Path(bare_name).stem
     safe_stem = _sanitize_stem(raw_stem)
 
+    # VED-SEC-001: the leading "{user_id}_" segment is the durable
+    # ownership marker VideoPathService.validate_upload_path checks
+    # before a /pipeline/start request may process this file — it is
+    # always derived from the authenticated uploader's own ID, never
+    # from client input, so it cannot be forged by another user. Stays
+    # a flat filename (no per-user subdirectory) so CleanupService's
+    # existing flat-iteration cleanup of UPLOAD_FOLDER needs no changes.
     unique_filename = (
+        f"{user_id}_"
         f"{uuid.uuid4().hex[:8]}"
         f"_{safe_stem}"
         f"{extension}"

@@ -108,7 +108,7 @@ class CreditDeductedBeforeJobStartTests(_IsolatedDbTestCase):
         ), patch.object(
             pipeline_router.VideoPathService,
             "validate_upload_path",
-            side_effect=lambda path: path,
+            side_effect=lambda path, user_id: path,
         ), patch.object(
             pipeline_router.BackgroundJobService,
             "is_accepting_jobs",
