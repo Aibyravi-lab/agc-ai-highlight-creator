@@ -16,8 +16,11 @@ import {
   getFileTooLargeMessage,
   isVideoDurationTooLong,
   getVideoTooLongMessage,
+  buildFileTooLargeEventProperties,
+  buildVideoTooLongEventProperties,
 } from "../utils/uploadLimits";
 import { readVideoDurationSeconds } from "../utils/videoDuration";
+import { track } from "../services/analytics";
 import type {
   PipelineJob,
   JobStats,
@@ -183,6 +186,8 @@ export function usePipeline() {
 
       if (isFileTooLarge(file.size)) {
         isValidatingUploadRef.current = false;
+        // VED-GROWTH-008: minimal rejection telemetry — no filename/path/content.
+        track("file_too_large", buildFileTooLargeEventProperties(file.size));
         setState((prev) => ({
           ...prev,
           error: getFileTooLargeMessage(),
@@ -197,6 +202,11 @@ export function usePipeline() {
       const durationSeconds = await readVideoDurationSeconds(file);
       if (durationSeconds !== null && isVideoDurationTooLong(durationSeconds)) {
         isValidatingUploadRef.current = false;
+        // VED-GROWTH-008: minimal rejection telemetry — no filename/path/content.
+        track(
+          "video_too_long",
+          buildVideoTooLongEventProperties(durationSeconds, file.size)
+        );
         setState((prev) => ({
           ...prev,
           error: getVideoTooLongMessage(),

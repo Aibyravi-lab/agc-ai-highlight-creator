@@ -25,3 +25,51 @@ export function isVideoDurationTooLong(durationSeconds: number): boolean {
 export function getVideoTooLongMessage(): string {
   return `Video exceeds the maximum allowed duration of ${MAX_VIDEO_DURATION_MINUTES} minutes.`;
 }
+
+// VED-GROWTH-008: minimal rejection telemetry. Property builders are pure
+// (bytes/seconds in, plain numbers out) so they're testable with node:test
+// without needing a File/browser environment — same rationale as
+// isVideoDurationTooLong above. No filename, path, or file content is ever
+// read or included.
+function bytesToMb(bytes: number): number {
+  return Math.round((bytes / (1024 * 1024)) * 100) / 100;
+}
+
+export interface FileTooLargeEventProperties {
+  file_size_mb: number;
+  max_file_size_mb: number;
+  // Index signature: analytics.ts's track() takes Record<string, unknown>;
+  // without this, TS rejects passing a named-interface value (as opposed to
+  // an inline object literal) as that parameter.
+  [key: string]: number;
+}
+
+export function buildFileTooLargeEventProperties(
+  fileSizeBytes: number
+): FileTooLargeEventProperties {
+  return {
+    file_size_mb: bytesToMb(fileSizeBytes),
+    max_file_size_mb: MAX_UPLOAD_SIZE_MB,
+  };
+}
+
+export interface VideoTooLongEventProperties {
+  duration_seconds: number;
+  max_duration_seconds: number;
+  file_size_mb: number;
+  // Index signature: analytics.ts's track() takes Record<string, unknown>;
+  // without this, TS rejects passing a named-interface value (as opposed to
+  // an inline object literal) as that parameter.
+  [key: string]: number;
+}
+
+export function buildVideoTooLongEventProperties(
+  durationSeconds: number,
+  fileSizeBytes: number
+): VideoTooLongEventProperties {
+  return {
+    duration_seconds: Math.round(durationSeconds * 100) / 100,
+    max_duration_seconds: MAX_VIDEO_DURATION_SECONDS,
+    file_size_mb: bytesToMb(fileSizeBytes),
+  };
+}

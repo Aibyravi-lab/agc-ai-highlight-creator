@@ -59,7 +59,10 @@ type AnalyticsEvent =
   // VED-GROWTH-001 Slice 2 — verified→first-upload diagnostic
   | "dashboard_first_visit_empty"
   | "upload_ui_seen"
-  | "file_selected";
+  | "file_selected"
+  // VED-GROWTH-008 — minimal client-side upload-rejection telemetry
+  | "video_too_long"
+  | "file_too_large";
 
 // Analytics must never break the user flow — every call is wrapped so a
 // PostHog/network failure is swallowed instead of propagating into caller code.
