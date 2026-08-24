@@ -11,7 +11,13 @@ import {
   getProgress,
 } from "../services/api";
 import { useAuth } from "../context/AuthContext";
-import { isFileTooLarge, getFileTooLargeMessage } from "../utils/uploadLimits";
+import {
+  isFileTooLarge,
+  getFileTooLargeMessage,
+  isVideoDurationTooLong,
+  getVideoTooLongMessage,
+} from "../utils/uploadLimits";
+import { readVideoDurationSeconds } from "../utils/videoDuration";
 import type {
   PipelineJob,
   JobStats,
@@ -61,6 +67,12 @@ export function usePipeline() {
   // in setInterval callbacks. Updated synchronously on every render.
   const currentJobIdRef = useRef<string | null>(null);
   currentJobIdRef.current = state.currentJobId;
+
+  // VED-GROWTH-006: the duration pre-check below is async, so there's a gap
+  // before `loading` (and therefore the button's disabled state) turns true.
+  // This ref closes that gap so a rapid double-click can't kick off two
+  // concurrent generateHighlights() runs while duration is still resolving.
+  const isValidatingUploadRef = useRef(false);
 
   // Set selected file
   const setSelectedFile = useCallback((file: File | null) => {
@@ -152,10 +164,16 @@ export function usePipeline() {
         return;
       }
 
+      if (isValidatingUploadRef.current) {
+        return;
+      }
+      isValidatingUploadRef.current = true;
+
       const SUPPORTED_EXTENSIONS = [".mp4", ".mov", ".avi", ".mkv", ".webm"];
       const dotIndex = file.name.lastIndexOf(".");
       const ext = dotIndex === -1 ? "" : file.name.slice(dotIndex).toLowerCase();
       if (!SUPPORTED_EXTENSIONS.includes(ext)) {
+        isValidatingUploadRef.current = false;
         setState((prev) => ({
           ...prev,
           error: `Unsupported file type${ext ? ` "${ext}"` : ""}. Please upload a video file (MP4, MOV, AVI, MKV, WebM).`,
@@ -164,12 +182,29 @@ export function usePipeline() {
       }
 
       if (isFileTooLarge(file.size)) {
+        isValidatingUploadRef.current = false;
         setState((prev) => ({
           ...prev,
           error: getFileTooLargeMessage(),
         }));
         return;
       }
+
+      // VED-GROWTH-006: client-side pre-check only — a deterministic >30min
+      // video is rejected before any network upload happens. A `null`
+      // (duration couldn't be read) always falls through to the existing
+      // upload path; the backend's ffprobe check remains authoritative.
+      const durationSeconds = await readVideoDurationSeconds(file);
+      if (durationSeconds !== null && isVideoDurationTooLong(durationSeconds)) {
+        isValidatingUploadRef.current = false;
+        setState((prev) => ({
+          ...prev,
+          error: getVideoTooLongMessage(),
+        }));
+        return;
+      }
+
+      isValidatingUploadRef.current = false;
 
       setState((prev) => {
         return { ...prev, loading: true, error: null, result: null, progress: 0, progressStatus: "Uploading...", successMessage: null };
