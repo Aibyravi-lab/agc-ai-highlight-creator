@@ -30,8 +30,19 @@ test("2049 MB is blocked", () => {
   assert.equal(isFileTooLarge(2049 * 1024 * 1024), true);
 });
 
-test("error message mentions the 2048 MB limit", () => {
-  assert.match(getFileTooLargeMessage(), /2048 MB/);
+test("large-file error message reports the selected size and configured limit", () => {
+  const message = getFileTooLargeMessage(6704.62 * 1024 * 1024);
+
+  assert.match(message, /6\.5 GB/);
+  assert.match(message, /2 GB/);
+  assert.match(message, /2048 MB/);
+  assert.match(message, /Trim or compress/);
+});
+
+test("large-file error message keeps sub-GB files in MB", () => {
+  const message = getFileTooLargeMessage(500 * 1024 * 1024);
+
+  assert.match(message, /500 MB/);
 });
 
 // --- isVideoDurationTooLong ---------------------------------------------

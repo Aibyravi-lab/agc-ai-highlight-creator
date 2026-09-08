@@ -60,6 +60,8 @@ type AnalyticsEvent =
   | "dashboard_first_visit_empty"
   | "upload_ui_seen"
   | "file_selected"
+  // VED-ACTIVATION-001 — confirms a completed result actually reached the browser UI
+  | "result_viewed"
   // VED-GROWTH-008 — minimal client-side upload-rejection telemetry
   | "video_too_long"
   | "file_too_large";

@@ -11,8 +11,14 @@ export function isFileTooLarge(fileSizeBytes: number): boolean {
   return fileSizeBytes > MAX_UPLOAD_SIZE_BYTES;
 }
 
-export function getFileTooLargeMessage(): string {
-  return `This video exceeds the maximum upload size of ${MAX_UPLOAD_SIZE_MB} MB.`;
+export function getFileTooLargeMessage(fileSizeBytes: number): string {
+  const fileSizeMb = bytesToMb(fileSizeBytes);
+  const displayedSize =
+    fileSizeMb >= 1024
+      ? `${Math.round((fileSizeMb / 1024) * 10) / 10} GB`
+      : `${fileSizeMb} MB`;
+
+  return `Your video is ${displayedSize}. Current beta limit is 2 GB (${MAX_UPLOAD_SIZE_MB} MB). Trim or compress the video and try again.`;
 }
 
 // VED-GROWTH-006: pure comparison only — reading a File's actual duration

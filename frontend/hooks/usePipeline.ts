@@ -190,7 +190,7 @@ export function usePipeline() {
         track("file_too_large", buildFileTooLargeEventProperties(file.size));
         setState((prev) => ({
           ...prev,
-          error: getFileTooLargeMessage(),
+          error: getFileTooLargeMessage(file.size),
         }));
         return;
       }
