@@ -64,7 +64,9 @@ type AnalyticsEvent =
   | "result_viewed"
   // VED-GROWTH-008 — minimal client-side upload-rejection telemetry
   | "video_too_long"
-  | "file_too_large";
+  | "file_too_large"
+  // VED-SUPPORT-001 — founder live-chat widget opened/maximized by the visitor
+  | "support_chat_opened";
 
 // Analytics must never break the user flow — every call is wrapped so a
 // PostHog/network failure is swallowed instead of propagating into caller code.

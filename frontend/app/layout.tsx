@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AuthProvider } from "../context/AuthContext";
 import { PostHogProvider } from "../components/PostHogProvider";
+import { TawkSupport } from "../components/TawkSupport";
 import { buildPageMetadata, SITE_NAME, SITE_URL } from "../utils/seo";
 import { hasAppleTouchIcon, hasFavicon } from "../utils/brandAssets";
 import "./globals.css";
@@ -67,6 +68,7 @@ export default function RootLayout({
         <AuthProvider>
           <PostHogProvider>{children}</PostHogProvider>
         </AuthProvider>
+        <TawkSupport />
       </body>
     </html>
   );
