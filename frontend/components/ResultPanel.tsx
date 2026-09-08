@@ -128,6 +128,21 @@ export function ResultPanel({
 }: ResultPanelProps) {
   const reelUrl = useAuthedMediaUrl(result?.final_reel);
 
+  // VED-ACTIVATION-002:
+  // Track the browser-side activation signal from the component that
+  // actually renders the completed result. useEffect runs after the
+  // render is committed, so this means the Results UI reached the user.
+  useEffect(() => {
+    if (!result) return;
+
+    track("result_viewed", {
+      highlights_found: result.highlights_found ?? 0,
+      has_reel: Boolean(result.final_reel),
+      has_vertical_reel: Boolean(result.vertical_reel),
+      has_thumbnail: Boolean(result.thumbnail),
+    });
+  }, [result]);
+
   if (!result) return null;
 
   const hasReel = !!result.final_reel;

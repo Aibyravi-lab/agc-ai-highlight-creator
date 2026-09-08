@@ -58,7 +58,6 @@ function DashboardContent({
   const router = useRouter();
 
   const [feedbackDismissed, setFeedbackDismissed] = useState(false);
-  const prevResultRef = useRef<ExtendedPipelineResult | null>(null);
 
   const {
     selectedFile,
@@ -124,6 +123,9 @@ function DashboardContent({
 
   const handleGenerateHighlights = async () => {
     if (selectedFile) {
+      // A dismissed feedback card belongs to the previous result.
+      // Every new generation should be eligible for fresh feedback.
+      setFeedbackDismissed(false);
       await generateHighlights(selectedFile);
     }
   };
@@ -150,23 +152,6 @@ function DashboardContent({
   const hasPrimaryDownload = Boolean(
     result?.final_reel || result?.vertical_reel || result?.thumbnail
   );
-
-  useEffect(() => {
-    if (result !== null && result !== prevResultRef.current) {
-      setFeedbackDismissed(false);
-
-      // VED-ACTIVATION-001: backend completion proves processing finished;
-      // this event proves the completed result actually reached the user's
-      // browser UI. The previous-result ref prevents re-render duplicates.
-      track("result_viewed", {
-        highlights_found: result.highlights_found ?? 0,
-        has_reel: Boolean(result.final_reel),
-        has_vertical_reel: Boolean(result.vertical_reel),
-        has_thumbnail: Boolean(result.thumbnail),
-      });
-    }
-    prevResultRef.current = result;
-  }, [result]);
 
   const currentJob: PipelineJob | null = currentJobId
     ? (allJobs.find((j) => j.job_id === currentJobId) ?? null)
