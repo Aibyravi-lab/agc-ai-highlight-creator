@@ -11,7 +11,7 @@ import { track } from "../services/analytics";
 // ship to the browser and are the same values tawk.to prints in its own
 // copy-paste snippet. The tawk.to JavaScript API key is intentionally NOT
 // used and must never be added to this file.
-const TAWK_PROPERTY_ID = "6a9ffb9f0cdcdcb34524abb3a";
+const TAWK_PROPERTY_ID = "6a9ffb9f0cdcdb34524abb3a";
 const TAWK_WIDGET_ID = "1k20etqc7";
 const TAWK_EMBED_SRC = `https://embed.tawk.to/${TAWK_PROPERTY_ID}/${TAWK_WIDGET_ID}`;
 

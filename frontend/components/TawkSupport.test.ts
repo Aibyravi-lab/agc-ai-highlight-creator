@@ -23,7 +23,7 @@ const analyticsSource = readFileSync(
 );
 
 test("component embeds the correct public tawk.to property and widget IDs", () => {
-  assert.match(componentSource, /"6a9ffb9f0cdcdcb34524abb3a"/);
+  assert.match(componentSource, /"6a9ffb9f0cdcdb34524abb3a"/);
   assert.match(componentSource, /"1k20etqc7"/);
 });
 
