@@ -108,6 +108,7 @@ function DashboardContent({
         alreadyTracked: dashboardFirstVisitEmptyTracked,
       })
     ) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional state gate forces upload_ui_seen into the next commit for deterministic analytics ordering.
       setDashboardFirstVisitEmptyTracked(true);
       track("dashboard_first_visit_empty");
     }

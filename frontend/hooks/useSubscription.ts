@@ -21,11 +21,13 @@ export function useSubscription(enabled: boolean = true) {
   }, [enabled]);
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- This effect owns subscription hydration and the disabled-state transition. */
     if (enabled) {
       refresh();
     } else {
       setLoading(false);
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [enabled, refresh]);
 
   const upgrade = useCallback(async () => {

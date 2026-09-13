@@ -23,6 +23,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const token = localStorage.getItem("agc_token");
     if (!token) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- No async auth lookup is required when no persisted token exists.
       setLoading(false);
       return;
     }

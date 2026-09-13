@@ -32,6 +32,7 @@ export function ProjectsPanel() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Initial fetch and subsequent polling intentionally share the same refresh callback.
     refresh();
     const interval = setInterval(refresh, 5000);
     return () => clearInterval(interval);

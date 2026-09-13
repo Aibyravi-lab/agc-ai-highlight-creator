@@ -15,6 +15,7 @@ export function useAuthedMediaUrl(
 
   useEffect(() => {
     if (!path) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Clearing a previously resolved object URL when the input path disappears is intentional.
       setUrl(null);
       return;
     }

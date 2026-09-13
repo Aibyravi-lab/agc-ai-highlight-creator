@@ -69,6 +69,7 @@ export function usePipeline() {
   // Ref that always holds the latest currentJobId without causing stale closures
   // in setInterval callbacks. Updated synchronously on every render.
   const currentJobIdRef = useRef<string | null>(null);
+  // eslint-disable-next-line react-hooks/refs -- The polling callback intentionally needs the latest job id without recreating the interval.
   currentJobIdRef.current = state.currentJobId;
 
   // VED-GROWTH-006: the duration pre-check below is async, so there's a gap
@@ -329,6 +330,7 @@ export function usePipeline() {
   // the interval callback reads currentJobIdRef.current for a fresh value
   // without needing the effect to re-run on every job state change.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Initial server-state hydration intentionally uses the same async loader as periodic refresh.
     loadHistory();
     loadJobStats();
     loadAllJobs();

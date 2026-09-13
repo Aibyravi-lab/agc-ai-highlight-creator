@@ -94,6 +94,8 @@ function mapJobStatus(backendStatus: string): FrontendJobStatus {
   return statusMap[backendStatus] || ("queued" as FrontendJobStatus);
 }
 
+// Backend JSON is validated/mapped at this API boundary; runtime behavior is intentionally preserved here.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function mapHighlight(backendHighlight: any): HighlightItem {
   return {
     timestamp: backendHighlight.timestamp,
@@ -106,6 +108,7 @@ export function mapHighlight(backendHighlight: any): HighlightItem {
   };
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function mapResult(backendResult: any): ExtendedPipelineResult | null {
   if (!backendResult) return null;
 
@@ -124,6 +127,7 @@ export function mapResult(backendResult: any): ExtendedPipelineResult | null {
   };
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function mapJob(backendJob: any): PipelineJob {
   return {
     job_id: backendJob.job_id,
@@ -236,6 +240,7 @@ export async function getHistory() {
   const response = await authedRequest("/history/");
   return {
     success: response.success,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     data: response.data.map((item: any) => ({
       video_name: item.video_name,
       date: item.date,

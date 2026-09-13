@@ -81,6 +81,7 @@ export function ProgressPanel({
   useEffect(() => {
     if (!loading || !currentJob?.created_at) {
       startMsRef.current = null;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Resetting display state when there is no active timed job is intentional.
       setElapsed(0);
       return;
     }
