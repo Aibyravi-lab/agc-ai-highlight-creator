@@ -29,6 +29,7 @@ class EditorService:
 
         command = [
             "ffmpeg",
+            "-nostdin",
             "-y",
             "-ss",
             str(timestamp),
@@ -89,6 +90,7 @@ class EditorService:
 
         command = [
             "ffmpeg",
+            "-nostdin",
             "-y",
 
             "-ss",
@@ -107,7 +109,10 @@ class EditorService:
             "aac",
 
             "-preset",
-            "fast",
+            "veryfast",
+
+            "-threads",
+            "2",
 
             str(output_path)
         ]
@@ -124,12 +129,15 @@ class EditorService:
             )
 
             if result.returncode != 0:
+                output_path.unlink(missing_ok=True)
                 raise Exception(
                     f"Clip creation failed: "
                     f"{result.stderr}"
                 )
 
         except subprocess.TimeoutExpired:
+
+            output_path.unlink(missing_ok=True)
 
             raise Exception(
                 f"FFmpeg timeout at "
